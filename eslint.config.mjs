@@ -139,6 +139,8 @@ export default typescriptEslint.config(
       // Assigning shared fixtures from a lifecycle hook is the standard shape
       // for a suite that owns a container or a connection.
       'unicorn/no-top-level-assignment-in-function': 'off',
+      // Test doubles are served over plain HTTP on the loopback interface.
+      'unicorn/prefer-https': 'off',
     },
   },
 

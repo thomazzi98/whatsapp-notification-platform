@@ -207,6 +207,10 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
     (request, reply) => {
       const phone = request.query.phone ?? '';
 
+      const failure = responseForFailureMode(forcedFailureMode);
+      if (failure !== undefined) {
+        return reply.status(failure.statusCode).send(failure.body);
+      }
       if (isUnregisteredNumber(phone)) {
         return reply.send({ numberExists: false, chatId: null });
       }
@@ -230,7 +234,9 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       });
     }
     if (mode === 'connection_reset') {
-      request.raw.destroy();
+      // The socket, not the request stream: destroying the stream alone leaves
+      // the caller waiting until its own timeout, which is a different failure.
+      request.raw.socket.destroy();
       return reply;
     }
 

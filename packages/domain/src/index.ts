@@ -41,6 +41,24 @@ export {
   type RetryPolicy,
   sessionNotReadyMinimumDelaySeconds,
 } from './notification/retry-policy';
+export {
+  canSessionSend,
+  type CreateSessionInput,
+  failed,
+  isProviderSessionStatus,
+  type ProviderQrCode,
+  type ProviderResult,
+  type ProviderSession,
+  type ProviderSessionStatus,
+  providerSessionStatuses,
+  type ResolvedRecipient,
+  type SendTextMessageInput,
+  type SentMessage,
+  succeeded,
+  toProviderSessionStatus,
+  WHATSAPP_PROVIDER_PORT,
+  type WhatsAppProviderPort,
+} from './provider/whatsapp-provider.port';
 export { CLOCK_PORT, type ClockPort } from './ports/clock';
 export {
   IDENTIFIER_GENERATOR_PORT,

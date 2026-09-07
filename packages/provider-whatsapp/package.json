@@ -1,0 +1,31 @@
+{
+  "name": "@platform/provider-whatsapp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WAHA adapter for the WhatsApp provider port, including failure classification.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@platform/domain": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@platform/waha-stub": "workspace:*",
+    "eslint": "catalog:",
+    "fastify": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
