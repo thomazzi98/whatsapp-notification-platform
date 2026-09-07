@@ -1,3 +1,4 @@
+import { type DomainErrorCode, isDomainError } from '@platform/domain';
 import { getCorrelationId } from '@platform/observability';
 import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException } from '@nestjs/common';
 import { type FastifyReply } from 'fastify';
@@ -27,6 +28,26 @@ interface HttpExceptionBody {
   readonly errors?: unknown;
 }
 
+/**
+ * The single place a domain rule becomes an HTTP status.
+ *
+ * The domain deliberately has no opinion about transport, so this table is what
+ * keeps the same rule surfacing identically through every interface.
+ */
+const statusByDomainErrorCode: Record<DomainErrorCode, { status: number; title: string }> = {
+  email_already_registered: { status: 409, title: 'Conflict' },
+  invalid_credentials: { status: 401, title: 'Unauthorized' },
+  account_locked: { status: 429, title: 'Too Many Requests' },
+  account_disabled: { status: 403, title: 'Forbidden' },
+  session_expired: { status: 401, title: 'Unauthorized' },
+  registration_disabled: { status: 403, title: 'Forbidden' },
+  application_slug_taken: { status: 409, title: 'Conflict' },
+  application_not_found: { status: 404, title: 'Not Found' },
+  api_key_not_found: { status: 404, title: 'Not Found' },
+  insufficient_scope: { status: 403, title: 'Forbidden' },
+  forbidden: { status: 403, title: 'Forbidden' },
+};
+
 @Catch()
 export class ProblemDetailsFilter implements ExceptionFilter {
   private readonly logger: Logger;
@@ -42,6 +63,20 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     instance: string | undefined,
     correlationId: string | undefined,
   ): ProblemDetails {
+    if (isDomainError(exception)) {
+      const mapped = statusByDomainErrorCode[exception.code];
+
+      return {
+        type: `${this.documentationBaseUrl}/problems/${exception.code}`,
+        title: mapped.title,
+        status: mapped.status,
+        detail: exception.message,
+        instance,
+        correlationId,
+        errors: exception.details,
+      };
+    }
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const response = exception.getResponse();

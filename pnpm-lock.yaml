@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@fastify/cookie':
+      specifier: 11.1.2
+      version: 11.1.2
     '@nestjs/common':
       specifier: 11.2.3
       version: 11.2.3
@@ -18,6 +21,9 @@ catalogs:
     '@nestjs/testing':
       specifier: 11.2.3
       version: 11.2.3
+    '@node-rs/argon2':
+      specifier: 2.2.0
+      version: 2.2.0
     '@testcontainers/postgresql':
       specifier: 12.1.0
       version: 12.1.0
@@ -116,6 +122,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fastify/cookie':
+        specifier: 'catalog:'
+        version: 11.1.2
       '@nestjs/common':
         specifier: 'catalog:'
         version: 11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
@@ -131,12 +140,18 @@ importers:
       '@platform/configuration':
         specifier: workspace:*
         version: link:../../packages/configuration
+      '@platform/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@platform/domain':
         specifier: workspace:*
         version: link:../../packages/domain
       '@platform/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@platform/security':
+        specifier: workspace:*
+        version: link:../../packages/security
       fastify:
         specifier: 'catalog:'
         version: 5.11.3
@@ -149,10 +164,16 @@ importers:
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
+      zod:
+        specifier: 'catalog:'
+        version: 4.5.4
     devDependencies:
       '@nestjs/testing':
         specifier: 'catalog:'
         version: 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))
+      '@platform/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       eslint:
         specifier: 'catalog:'
         version: 10.10.0(supports-color@7.2.0)
@@ -189,6 +210,9 @@ importers:
       '@platform/observability':
         specifier: workspace:*
         version: link:../observability
+      '@platform/security':
+        specifier: workspace:*
+        version: link:../security
       reflect-metadata:
         specifier: 'catalog:'
         version: 0.2.2
@@ -224,6 +248,28 @@ importers:
       tsx:
         specifier: 'catalog:'
         version: 4.23.13
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/contracts:
+    dependencies:
+      '@platform/domain':
+        specifier: workspace:*
+        version: link:../domain
+      zod:
+        specifier: 'catalog:'
+        version: 4.5.4
+    devDependencies:
+      eslint:
+        specifier: 'catalog:'
+        version: 10.10.0(supports-color@7.2.0)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -305,6 +351,59 @@ importers:
       pino-pretty:
         specifier: 13.1.2
         version: 13.1.2
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.2
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/security:
+    dependencies:
+      '@node-rs/argon2':
+        specifier: 'catalog:'
+        version: 2.2.0
+      '@platform/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      eslint:
+        specifier: 'catalog:'
+        version: 10.10.0(supports-color@7.2.0)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.2
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/testing:
+    dependencies:
+      '@platform/configuration':
+        specifier: workspace:*
+        version: link:../configuration
+      '@platform/database':
+        specifier: workspace:*
+        version: link:../database
+      '@platform/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@testcontainers/postgresql':
+        specifier: 'catalog:'
+        version: 12.1.0(supports-color@7.2.0)
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
+    devDependencies:
+      eslint:
+        specifier: 'catalog:'
+        version: 10.10.0(supports-color@7.2.0)
       rimraf:
         specifier: 'catalog:'
         version: 6.1.2
@@ -851,6 +950,9 @@ packages:
   '@fastify/ajv-compiler@4.0.6':
     resolution: {integrity: sha512-NtuzM0SfaMJbGlnjr9LWQUN5LzgSrbB8tf/wRZNas+4E1O/Nmzl53e7ruT61HDZyRCJGC6FxIogmNZO1c5ETBA==}
 
+  '@fastify/cookie@11.1.2':
+    resolution: {integrity: sha512-Dtrpk/YOGUsbRMvP/8ZqPpwnMRv0qSqodFdoQ2B589Obc7jw4s4Qla+cV72Bsm7WsZJnqlYFX/i7uSBq0xzg6g==}
+
   '@fastify/cors@11.3.0':
     resolution: {integrity: sha512-ggQGua+xHv1MvePbPr0v//xLYEsCXbWspquXCJS9Ot5YoRXq8J8ZWzHnxDBVnbtXosvistXo6LtNzOJswf64Fw==}
 
@@ -995,6 +1097,92 @@ packages:
         optional: true
       '@nestjs/platform-express':
         optional: true
+
+  '@node-rs/argon2-android-arm-eabi@2.2.0':
+    resolution: {integrity: sha512-xbJvpiTlYqKxq5XRkhQlZNiIRE4fZPFJdB46jOPED8pGkxgn1erMMdVCPWp1RcOxuChaiEOl8DVu5sVVu9ApVw==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [android]
+
+  '@node-rs/argon2-android-arm64@2.2.0':
+    resolution: {integrity: sha512-i47xYwh8GNKc0yNwFQz7Hqsx6pBZJsJ1hqRXmtThOXbjl6HoVlX7oGBpqq4s+sBrU8ba0kubAqJ8fBjtp4iwHQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [android]
+
+  '@node-rs/argon2-darwin-arm64@2.2.0':
+    resolution: {integrity: sha512-Zet1ekAQPUczRQ6cmFCpQyScg9346SnzYt7CRWPd4GCs8CBOOK34PrtbazdReHcBxUgSDnhMhDWnO0jmtJ15sQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@node-rs/argon2-darwin-x64@2.2.0':
+    resolution: {integrity: sha512-JeOpmf5glG9MTS+qt6VZ3tUUZdQ3Kll/e18yUeBmDRSKQDN0AJs5ruzqV08DOclVUqXG0IF2DVhbE825RN96yA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@node-rs/argon2-freebsd-x64@2.2.0':
+    resolution: {integrity: sha512-w7R4yoAcOlZctOz7EHhf2hFHSuRyJcphMZAcyKRJ3Sxu8APjqifLepOkuXC1Gat08DYFTI51RMPj7sMU36KcGA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@node-rs/argon2-linux-arm-gnueabihf@2.2.0':
+    resolution: {integrity: sha512-H5uGMLmj2vor3YDAX+LIyw4yGXEESXvr5voyRK+AuxdIvZ/B7mxma06IOmb+4n9t/MQ1Lbwu7gkyWt8f3wyrNA==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+
+  '@node-rs/argon2-linux-arm64-gnu@2.2.0':
+    resolution: {integrity: sha512-P0A+tUMI7NwImaK7txceScl7d18GAw4hkt27NChZIZdD55w7qZ81LFcA4cEP9L6kgdubItlAqcD/qBR5XMCd5Q==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@node-rs/argon2-linux-arm64-musl@2.2.0':
+    resolution: {integrity: sha512-i5s9msRRy+m/yul9M+1OF7fN/VqhJ+4IalPn1rhyrE3gwNcgfoT+A0DuAqR5gtXmDb3zx+QWIjtHCLhvkvu23g==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@node-rs/argon2-linux-x64-gnu@2.2.0':
+    resolution: {integrity: sha512-R6oaRA2Iesbsexe06Aeydbdz617WD2lE6yDcb4t5T+0iGM1VyVpI+nNpcAtkcXyO6Dgmuhh+3RKbm/F2CSBt1w==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@node-rs/argon2-linux-x64-musl@2.2.0':
+    resolution: {integrity: sha512-Paql63t7XusSTYMSfEQ0ex5edubWX/OhvLRYsC+oQxWiC+3x2WcYWp+fWVwdlAm+eJRsIOj6w3iG3yDy94ZL8A==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@node-rs/argon2-win32-arm64-msvc@2.2.0':
+    resolution: {integrity: sha512-ysl+KaEeYVBKY3/J4w3VKD7KVHATpsJ/TMtxjmVyX8KEhwemH2qmlyZcVQb5fPy+Yk18g7cHu7LYuDffROo8pw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@node-rs/argon2-win32-ia32-msvc@2.2.0':
+    resolution: {integrity: sha512-2Hp0RtOgM8jxcTsrtYlIkfk0PQXFnENyqvEuFTNCHMFSWhV8D/Ds2OrWSmjWTGQhLNWNp2JrX4XKsZM0+PB3NA==}
+    engines: {node: '>= 10'}
+    cpu: [ia32]
+    os: [win32]
+
+  '@node-rs/argon2-win32-x64-msvc@2.2.0':
+    resolution: {integrity: sha512-cfcNjVqLpgOU/9l2mLOFduuXTxvGH5qoV38AhcOz9oQaC7GDmsFbAgcuizVNuOtpSyQr5HoQez3f2X2jYgGMsg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@node-rs/argon2@2.2.0':
+    resolution: {integrity: sha512-iBItNNiiim2nzhmUY4uxA4nYaNBatj8Ae/YnlwQzRYRFiBysm2scfsyjO+ktH+7VHl1O24UwFd2EeihV4IJzxw==}
+    engines: {node: '>= 10'}
 
   '@oxc-project/types@0.148.0':
     resolution: {integrity: sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A==}
@@ -1559,6 +1747,10 @@ packages:
   cookie@1.1.1:
     resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
     engines: {node: '>=18'}
+
+  cookie@2.0.1:
+    resolution: {integrity: sha512-yuToqVvRrj6pfDXREyQAAv8SkAEk/8GS3jQRTiUMm66TVtBYmqQeoEjL2Lmq8Rpo6271vH76InTChTitEAm65w==}
+    engines: {node: '>=22'}
 
   core-js-compat@3.50.0:
     resolution: {integrity: sha512-XGpFGbMLHwSt74YLTKho7Ib242qi6O8MSX+sRokV4oz7iKXvQWGYZthjIhjRGMxjzVkAubBO512dKGYcefmX3Q==}
@@ -3349,6 +3541,11 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 4.1.4
 
+  '@fastify/cookie@11.1.2':
+    dependencies:
+      cookie: 2.0.1
+      fastify-plugin: 6.0.0
+
   '@fastify/cors@11.3.0':
     dependencies:
       fastify-plugin: 6.0.0
@@ -3490,6 +3687,61 @@ snapshots:
       '@nestjs/common': 11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
       '@nestjs/core': 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       tslib: 2.8.1
+
+  '@node-rs/argon2-android-arm-eabi@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-android-arm64@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-darwin-arm64@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-darwin-x64@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-freebsd-x64@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-linux-arm-gnueabihf@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-linux-arm64-gnu@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-linux-arm64-musl@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-linux-x64-gnu@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-linux-x64-musl@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-win32-arm64-msvc@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-win32-ia32-msvc@2.2.0':
+    optional: true
+
+  '@node-rs/argon2-win32-x64-msvc@2.2.0':
+    optional: true
+
+  '@node-rs/argon2@2.2.0':
+    optionalDependencies:
+      '@node-rs/argon2-android-arm-eabi': 2.2.0
+      '@node-rs/argon2-android-arm64': 2.2.0
+      '@node-rs/argon2-darwin-arm64': 2.2.0
+      '@node-rs/argon2-darwin-x64': 2.2.0
+      '@node-rs/argon2-freebsd-x64': 2.2.0
+      '@node-rs/argon2-linux-arm-gnueabihf': 2.2.0
+      '@node-rs/argon2-linux-arm64-gnu': 2.2.0
+      '@node-rs/argon2-linux-arm64-musl': 2.2.0
+      '@node-rs/argon2-linux-x64-gnu': 2.2.0
+      '@node-rs/argon2-linux-x64-musl': 2.2.0
+      '@node-rs/argon2-win32-arm64-msvc': 2.2.0
+      '@node-rs/argon2-win32-ia32-msvc': 2.2.0
+      '@node-rs/argon2-win32-x64-msvc': 2.2.0
 
   '@oxc-project/types@0.148.0': {}
 
@@ -4035,6 +4287,8 @@ snapshots:
   convert-source-map@2.0.0: {}
 
   cookie@1.1.1: {}
+
+  cookie@2.0.1: {}
 
   core-js-compat@3.50.0:
     dependencies:

@@ -1,0 +1,31 @@
+{
+  "name": "@platform/testing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared test harness: a disposable Postgres, migrations, and deterministic runtime doubles.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@platform/configuration": "workspace:*",
+    "@platform/database": "workspace:*",
+    "@platform/domain": "workspace:*",
+    "@testcontainers/postgresql": "catalog:",
+    "drizzle-orm": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

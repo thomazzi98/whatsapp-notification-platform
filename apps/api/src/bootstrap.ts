@@ -1,5 +1,6 @@
 import { type ApplicationConfiguration } from '@platform/configuration';
 import { createLogger } from '@platform/observability';
+import fastifyCookie from '@fastify/cookie';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 
@@ -35,6 +36,7 @@ export async function bootstrapApi(configuration: ApplicationConfiguration): Pro
     { bufferLogs: true, logger: false },
   );
 
+  await application.register(fastifyCookie);
   registerCorrelationHook(adapter.getInstance(), configuration.observability.recipientSalt);
   application.useGlobalFilters(new ProblemDetailsFilter(logger, configuration.http.publicBaseUrl));
   application.enableShutdownHooks();

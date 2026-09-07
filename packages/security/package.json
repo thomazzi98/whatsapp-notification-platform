@@ -1,0 +1,28 @@
+{
+  "name": "@platform/security",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Credential hashing, token generation, encryption, and the runtime primitives the domain declares as ports.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "catalog:",
+    "@platform/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

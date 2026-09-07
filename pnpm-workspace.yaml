@@ -47,5 +47,9 @@ catalog:
   # Pinned to the exact version platform-fastify depends on, so the
   # process never loads two copies of Fastify.
   fastify: 5.11.3
+  "@fastify/cookie": 11.1.2
   reflect-metadata: 0.2.2
   rxjs: 7.8.2
+
+  # Credentials
+  "@node-rs/argon2": 2.2.0

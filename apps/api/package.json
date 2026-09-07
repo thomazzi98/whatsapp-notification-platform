@@ -11,26 +11,32 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
-    "clean": "rimraf dist *.tsbuildinfo"
+    "clean": "rimraf dist *.tsbuildinfo",
+    "test:integration": "vitest run --project integration"
   },
   "dependencies": {
+    "@fastify/cookie": "catalog:",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-fastify": "catalog:",
     "@platform/composition": "workspace:*",
     "@platform/configuration": "workspace:*",
+    "@platform/contracts": "workspace:*",
     "@platform/domain": "workspace:*",
     "@platform/observability": "workspace:*",
+    "@platform/security": "workspace:*",
     "fastify": "catalog:",
     "pino": "catalog:",
     "reflect-metadata": "catalog:",
-    "rxjs": "catalog:"
+    "rxjs": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@nestjs/testing": "catalog:",
+    "@platform/testing": "workspace:*",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "tsx": "catalog:",

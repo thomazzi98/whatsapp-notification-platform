@@ -22,6 +22,7 @@
     "@platform/database": "workspace:*",
     "@platform/domain": "workspace:*",
     "@platform/observability": "workspace:*",
+    "@platform/security": "workspace:*",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:"
   },

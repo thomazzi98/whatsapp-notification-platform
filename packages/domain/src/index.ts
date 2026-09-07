@@ -1,3 +1,4 @@
+export { DomainError, type DomainErrorCode, domainErrorCodes, isDomainError } from './errors';
 export {
   type DeliveryAcknowledgement,
   deliveryAcknowledgements,
@@ -74,6 +75,20 @@ export {
   type TemplateVariableDeclaration,
   type TemplateVariableValue,
 } from './template/render-template';
+export {
+  apiKeyDisplayPrefix,
+  type ApiKeyEnvironment,
+  apiKeyEnvironments,
+  apiKeyIdentifierLength,
+  apiKeyLastFour,
+  apiKeyPrefix,
+  apiKeySecretLength,
+  formatApiKey,
+  InvalidApiKeyFormatError,
+  type ParsedApiKey,
+  parseApiKey,
+  tryParseApiKey,
+} from './tenant/api-key-format';
 export {
   type ApiKeyScope,
   apiKeyScopes,

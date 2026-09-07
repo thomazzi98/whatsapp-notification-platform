@@ -2,7 +2,7 @@ export {
   type CorrelationContext,
   getCorrelationContext,
   getCorrelationId,
-  runWithAdditionalCorrelationContext,
+  enrichCorrelationContext,
   runWithCorrelationContext,
 } from './correlation-context';
 export { type LogEvent, logEvents } from './log-events';
