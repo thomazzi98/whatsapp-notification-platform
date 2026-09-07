@@ -114,6 +114,9 @@ export default typescriptEslint.config(
       'unicorn/prefer-module': 'off',
       'unicorn/no-array-reduce': 'off',
       'unicorn/filename-case': ['error', { case: 'kebabCase' }],
+      // Conflicts with idiomatic single-line JSDoc, and its autofix
+      // produces a block comment without leading asterisks.
+      'unicorn/single-line-block-comment-style': 'off',
 
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-console': 'error',

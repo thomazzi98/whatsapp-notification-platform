@@ -1,4 +1,14 @@
 export {
+  type DeliveryAcknowledgement,
+  deliveryAcknowledgements,
+  describeAcknowledgement,
+  isDeliveredAcknowledgement,
+  isFailureAcknowledgement,
+  isReadAcknowledgement,
+  isDeliveryAcknowledgement,
+  mergeAcknowledgements,
+} from './notification/delivery-acknowledgement';
+export {
   assertNotificationStatusTransition,
   cancellableNotificationStatuses,
   canTransitionNotificationStatus,
@@ -12,6 +22,58 @@ export {
   type TerminalNotificationStatus,
   terminalNotificationStatuses,
 } from './notification/notification-status';
+export {
+  classifyFailureCode,
+  createProviderFailure,
+  type FailureClassification,
+  failureClassifications,
+  isRetryable,
+  type ProviderFailure,
+  type ProviderFailureCode,
+  providerFailureCodes,
+} from './notification/provider-failure';
+export {
+  computeNextAttemptAt,
+  computeRetryDelaySeconds,
+  defaultRetryPolicy,
+  hasAttemptsRemaining,
+  type RetryPolicy,
+  sessionNotReadyMinimumDelaySeconds,
+} from './notification/retry-policy';
+export { CLOCK_PORT, type ClockPort } from './ports/clock';
+export {
+  IDENTIFIER_GENERATOR_PORT,
+  type IdentifierGeneratorPort,
+} from './ports/identifier-generator';
+export { RANDOM_PORT, type RandomPort } from './ports/random';
+export {
+  InvalidPhoneNumberError,
+  isValidPhoneNumber,
+  normalizePhoneNumber,
+  parsePhoneNumber,
+  toProviderChatIdentifier,
+} from './recipient/phone-number';
+export {
+  type ParsedTemplate,
+  parseTemplate,
+  type TemplateNode,
+  TemplateSyntaxError,
+  type TemplateSyntaxErrorCode,
+  templateSyntaxErrorCodes,
+  templateVariableNamePattern,
+} from './template/parse-template';
+export {
+  maximumRenderedBodyLength,
+  maximumVariableValueLength,
+  type RenderResult,
+  renderTemplate,
+  TemplateRenderError,
+  type TemplateRenderErrorCode,
+  templateRenderErrorCodes,
+  type TemplateRenderErrorDetails,
+  type TemplateVariableDeclaration,
+  type TemplateVariableValue,
+} from './template/render-template';
 export {
   type ApiKeyScope,
   apiKeyScopes,
