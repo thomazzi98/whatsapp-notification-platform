@@ -87,5 +87,35 @@ services:
       retries: 6
       start_period: 15s
 
+  # A deterministic stand-in for WAHA, so the delivery pipeline can be exercised
+  # without a phone, a scannable code, or an account that can be banned.
+  # Started only with: docker compose --profile stub up
+  waha-stub:
+    profiles: ["stub"]
+    build:
+      context: .
+      dockerfile: tools/docker/node-service.Dockerfile
+      args:
+        PACKAGE_NAME: "@platform/waha-stub"
+    command: ["node", "dist/main.js"]
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      WAHA_API_KEY: ${WAHA_API_KEY:-stub-api-key}
+    ports:
+      - "127.0.0.1:3200:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/ping').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
 volumes:
   postgres-data:

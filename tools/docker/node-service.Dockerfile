@@ -21,7 +21,7 @@ WORKDIR /app
 # means adding a workspace package does not require editing this file.
 FROM base AS dependencies
 COPY --parents package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --parents packages/*/package.json apps/*/package.json ./
+COPY --parents packages/*/package.json apps/*/package.json tools/*/package.json ./
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile
 

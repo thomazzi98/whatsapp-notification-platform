@@ -117,6 +117,12 @@ export default typescriptEslint.config(
       // Conflicts with idiomatic single-line JSDoc, and its autofix
       // produces a block comment without leading asterisks.
       'unicorn/single-line-block-comment-style': 'off',
+      // Directly contradicts the no-else rule above: it asks for `else if`
+      // where adjacent guard clauses are exactly the intended shape.
+      'unicorn/prefer-else-if': 'off',
+      // Iterator helpers are not typed in the ES2023 lib this project
+      // targets, so the suggested form does not type check.
+      'unicorn/prefer-iterator-to-array': 'off',
 
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-console': 'error',

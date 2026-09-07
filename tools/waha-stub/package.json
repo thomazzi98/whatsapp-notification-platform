@@ -1,0 +1,28 @@
+{
+  "name": "@platform/waha-stub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A deterministic stand-in for WAHA, so the delivery pipeline can be tested without a phone.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "start": "node dist/main.js",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "fastify": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
