@@ -8,6 +8,20 @@
       "when": 1788804131945,
       "tag": "0000_initial_tenancy_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788821901694,
+      "tag": "0001_notification_delivery_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788821910764,
+      "tag": "0002_notification_status_transition_guard",
+      "breakpoints": true
     }
   ]
 }

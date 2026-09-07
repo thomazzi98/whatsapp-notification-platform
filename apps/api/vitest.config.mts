@@ -9,6 +9,9 @@ export default defineConfig({
           environment: 'node',
           include: ['src/**/*.test.ts'],
           exclude: ['src/**/*.integration.test.ts'],
+          // Bootstrapping a Nest module is slow enough that the default five
+          // second timeout is flaky when the whole workspace builds in parallel.
+          testTimeout: 20_000,
         },
       },
       {

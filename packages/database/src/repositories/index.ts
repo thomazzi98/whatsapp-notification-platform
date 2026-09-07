@@ -8,6 +8,16 @@ export {
   ApplicationRepository,
   type UpdateApplicationInput,
 } from './application.repository';
+export {
+  type InsertNotificationInput,
+  type NotificationEventInput,
+  type NotificationEventRecord,
+  type NotificationListFilters,
+  type NotificationPage,
+  type NotificationRecord,
+  NotificationRepository,
+  type QueryExecutor,
+} from './notification.repository';
 export { type OrganizationRecord, OrganizationRepository } from './organization.repository';
 export { type SessionWithUser, UserSessionRepository } from './user-session.repository';
 export { type UserRecord, UserRepository } from './user.repository';
