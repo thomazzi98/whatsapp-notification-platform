@@ -9,6 +9,12 @@ allowBuilds:
   esbuild: true
   "@tailwindcss/oxide": true
   unrs-resolver: true
+  # Transitive dependencies of testcontainers. All three are optional native
+  # accelerations for an SSH transport this project never uses, so their build
+  # scripts are declined rather than left undecided.
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
 
 # Versions are declared once here and referenced as "catalog:" by every
 # workspace package, so a shared dependency cannot drift between packages.
@@ -24,3 +30,9 @@ catalog:
   # Shared runtime libraries
   zod: 4.5.4
   pino: 10.3.1
+  drizzle-orm: 0.45.2
+  drizzle-kit: 0.31.10
+  pg: 8.23.0
+  "@types/pg": 8.23.1
+  testcontainers: 12.1.0
+  "@testcontainers/postgresql": 12.1.0

@@ -1,0 +1,43 @@
+{
+  "name": "@platform/database",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drizzle schema, SQL migrations, connection pools and repository implementations.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "migration:generate": "drizzle-kit generate",
+    "migration:custom": "drizzle-kit generate --custom",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "migrate": "tsx src/cli/migrate.ts"
+  },
+  "dependencies": {
+    "@platform/domain": "workspace:*",
+    "@platform/observability": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "catalog:",
+    "@types/pg": "catalog:",
+    "drizzle-kit": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "testcontainers": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "bin": {
+    "platform-migrate": "./dist/cli/migrate.js"
+  }
+}

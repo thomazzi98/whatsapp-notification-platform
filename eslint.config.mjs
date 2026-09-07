@@ -127,15 +127,26 @@ export default typescriptEslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       'unicorn/no-useless-undefined': 'off',
+      // Assigning shared fixtures from a lifecycle hook is the standard shape
+      // for a suite that owns a container or a connection.
+      'unicorn/no-top-level-assignment-in-function': 'off',
     },
   },
 
   {
-    files: ['**/scripts/**/*.ts'],
+    files: ['**/scripts/**/*.ts', '**/cli/**/*.ts'],
     rules: {
       // These are command-line entry points; exiting with a status code is the
       // correct way for them to report failure.
       'unicorn/no-process-exit': 'off',
+    },
+  },
+
+  {
+    files: ['**/*.config.{ts,mts,mjs,js}'],
+    rules: {
+      // Option names in third-party config objects are not ours to rename.
+      'unicorn/name-replacements': 'off',
     },
   },
 

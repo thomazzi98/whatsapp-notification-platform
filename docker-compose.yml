@@ -1,0 +1,49 @@
+name: whatsapp-notification-platform
+
+# Host ports are bound to 127.0.0.1 and shifted off the defaults, so this stack
+# cannot collide with another project's Postgres or be reached from the network.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_SYSTEM_USER:-platform_system}
+      POSTGRES_PASSWORD: ${DATABASE_SYSTEM_PASSWORD:-platform_system_password}
+      POSTGRES_DB: ${DATABASE_NAME:-notifications}
+      APPLICATION_DATABASE_USER: ${DATABASE_APPLICATION_USER:-platform_application}
+      APPLICATION_DATABASE_PASSWORD: ${DATABASE_APPLICATION_PASSWORD:-platform_application_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DATABASE_SYSTEM_USER:-platform_system} -d ${DATABASE_NAME:-notifications}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # A one-shot barrier. The API and the worker depend on this completing, which
+  # removes the startup race where several processes migrate concurrently.
+  migrate:
+    build:
+      context: .
+      dockerfile: tools/docker/node-service.Dockerfile
+      args:
+        PACKAGE_NAME: "@platform/database"
+    command: ["node", "dist/cli/migrate.js"]
+    restart: "no"
+    environment:
+      DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD:-platform_system_password}@postgres:5432/${DATABASE_NAME:-notifications}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

@@ -58,12 +58,32 @@ installs.
 Running Docker commands from Git Bash is fine. Only ad-hoc `docker run -v` and `docker exec` with
 absolute paths need `MSYS_NO_PATHCONV=1`, because MSYS rewrites arguments that begin with `/`.
 
-## Development
+## Running locally
 
 ```bash
 corepack pnpm install
+corepack pnpm setup:env
+docker compose up
+```
+
+`setup:env` writes a `.env` from `.env.example` with freshly generated secrets, so the first
+run does not require hand-crafting base64 keys. `.env.example` itself is generated from the
+configuration schema, and a test fails if the two drift apart.
+
+Compose brings up Postgres and a one-shot `migrate` service that applies migrations and exits.
+Postgres is published on `127.0.0.1:55432` to avoid colliding with other local projects.
+
+Two database roles are created: `platform_system` owns the schema and runs migrations, while
+`platform_application` serves requests and is deliberately not a table owner. Keeping them
+separate is what makes row level security meaningful, since a table owner is exempt from its
+own policies.
+
+## Development
+
+```bash
 corepack pnpm build
-corepack pnpm test
+corepack pnpm test               # unit tests, no external services
+corepack pnpm test:integration   # starts Postgres via Testcontainers
 ```
 
 Other tasks: `pnpm lint`, `pnpm typecheck`, `pnpm verify:layers`, `pnpm format`.
