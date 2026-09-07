@@ -52,6 +52,10 @@ export default typescriptEslint.config(
         {
           checkFilenames: true,
           checkProperties: true,
+          // The plugin's built-in map pushes the wrong way for this codebase:
+          // it wants `configuration` shortened to `config` and `applicationId`
+          // to `appId`. Only the list below applies.
+          extendDefaultReplacements: false,
           replacements: {
             req: { request: true },
             res: { response: true },
@@ -123,6 +127,15 @@ export default typescriptEslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       'unicorn/no-useless-undefined': 'off',
+    },
+  },
+
+  {
+    files: ['**/scripts/**/*.ts'],
+    rules: {
+      // These are command-line entry points; exiting with a status code is the
+      // correct way for them to report failure.
+      'unicorn/no-process-exit': 'off',
     },
   },
 

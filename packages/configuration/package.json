@@ -1,0 +1,30 @@
+{
+  "name": "@platform/configuration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Environment configuration schema, parsing and fail-fast validation.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "generate:example": "tsx scripts/write-environment-example.ts",
+    "setup:environment": "tsx scripts/setup-local-environment.ts"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

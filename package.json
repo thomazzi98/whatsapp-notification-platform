@@ -19,7 +19,9 @@
     "verify:layers": "depcruise --config .dependency-cruiser.cjs packages apps tools",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "clean": "turbo run clean && rimraf node_modules"
+    "clean": "turbo run clean && rimraf node_modules",
+    "setup:env": "pnpm --filter @platform/configuration run setup:environment",
+    "generate:env-example": "pnpm --filter @platform/configuration run generate:example"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
