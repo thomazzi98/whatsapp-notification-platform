@@ -1,13 +1,12 @@
 {
-  "name": "@platform/database",
+  "name": "@platform/queue",
   "version": "0.1.0",
   "private": true,
-  "description": "Drizzle schema, SQL migrations, connection pools and repository implementations.",
+  "description": "Durable job queue built on Postgres, including transactional enqueue.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist",
-    "migrations"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -15,25 +14,23 @@
     "lint": "eslint .",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "migration:generate": "drizzle-kit generate",
-    "migration:custom": "drizzle-kit generate --custom",
     "clean": "rimraf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@platform/database": "workspace:*",
     "@platform/domain": "workspace:*",
-    "@platform/observability": "workspace:*",
     "drizzle-orm": "catalog:",
-    "pg": "catalog:"
+    "pg-boss": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@testcontainers/postgresql": "catalog:",
-    "@types/pg": "catalog:",
-    "drizzle-kit": "catalog:",
+    "@platform/testing": "workspace:*",
     "eslint": "catalog:",
     "rimraf": "catalog:",
-    "testcontainers": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "bin": {
+    "platform-bootstrap": "./dist/cli/bootstrap.js"
   }
 }

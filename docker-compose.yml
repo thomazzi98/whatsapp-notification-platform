@@ -36,11 +36,12 @@ services:
       context: .
       dockerfile: tools/docker/node-service.Dockerfile
       args:
-        PACKAGE_NAME: "@platform/database"
-    command: ["node", "dist/cli/migrate.js"]
+        PACKAGE_NAME: "@platform/queue"
+    command: ["node", "dist/cli/bootstrap.js"]
     restart: "no"
     environment:
       DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD:-platform_system_password}@postgres:5432/${DATABASE_NAME:-notifications}
+      QUEUE_SCHEMA: ${QUEUE_SCHEMA:-pgboss}
     depends_on:
       postgres:
         condition: service_healthy

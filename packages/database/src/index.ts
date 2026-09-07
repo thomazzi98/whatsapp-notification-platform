@@ -1,4 +1,5 @@
 export { applyMigrations, type MigrationOptions } from './bootstrap';
+export { migrationsFolder } from './migrations-location';
 export {
   type ConnectionOptions,
   createDatabaseConnection,

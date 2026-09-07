@@ -53,3 +53,6 @@ catalog:
 
   # Credentials
   "@node-rs/argon2": 2.2.0
+
+  # Queue
+  pg-boss: 12.30.0
