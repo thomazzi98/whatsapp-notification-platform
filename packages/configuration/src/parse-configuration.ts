@@ -60,10 +60,28 @@ function collectProductionIssues(configuration: ApplicationConfiguration): Confi
  * Throws a {@link ConfigurationError} listing every problem at once. Reporting
  * one issue per run turns a misconfigured deployment into a guessing game.
  */
+/**
+ * An empty assignment in a .env file means "not set", which is how people
+ * actually edit them. Zod applies a default only for `undefined`, so without
+ * this a blank line produces a confusing type error instead of the documented
+ * default � and a genuinely required variable still fails, as it should.
+ */
+function treatEmptyValuesAsUnset(
+  environment: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const normalized: Record<string, string | undefined> = {};
+
+  for (const [variableName, value] of Object.entries(environment)) {
+    normalized[variableName] = value === '' ? undefined : value;
+  }
+
+  return normalized;
+}
+
 export function parseConfiguration(
   environment: NodeJS.ProcessEnv | Record<string, string | undefined>,
 ): ApplicationConfiguration {
-  const result = environmentSchema.safeParse(environment);
+  const result = environmentSchema.safeParse(treatEmptyValuesAsUnset(environment));
 
   if (!result.success) {
     const issues = result.error.issues.map((issue) => ({

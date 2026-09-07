@@ -1,10 +1,12 @@
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { environmentSchema } from './environment-schema';
+import { environmentSchema, placeholderSecret } from './environment-schema';
 import { generateEnvironmentExample } from './generate-environment-example';
+import { parseConfiguration } from './parse-configuration';
 
 const repositoryRoot = path.resolve(process.cwd(), '../..');
 
@@ -52,5 +54,41 @@ describe('generateEnvironmentExample', () => {
     const committed = readFileSync(path.resolve(repositoryRoot, '.env.example'), 'utf8');
 
     expect(generateEnvironmentExample()).toBe(committed);
+  });
+});
+
+describe('the generated example is usable', () => {
+  /**
+   * The strongest guard on this generator. An earlier version silently emitted
+   * empty values for variables whose default sat behind a transform, and the
+   * only symptom was a confusing validation failure at container startup.
+   */
+  it('parses successfully once the placeholder secrets are replaced', () => {
+    const environment: Record<string, string> = {};
+
+    for (const line of generateEnvironmentExample().split('\n')) {
+      const separatorIndex = line.indexOf('=');
+      if (separatorIndex === -1 || line.startsWith('#')) {
+        continue;
+      }
+      const variableName = line.slice(0, separatorIndex);
+      const value = line.slice(separatorIndex + 1);
+      environment[variableName] =
+        value === placeholderSecret ? randomBytes(32).toString('base64') : value;
+    }
+
+    // The provider key is not a base64 secret, just a long opaque string.
+    environment.WAHA_API_KEY = 'a-waha-api-key-value';
+
+    expect(() => parseConfiguration(environment)).not.toThrow();
+  });
+
+  it('leaves no variable with an empty value', () => {
+    const emptyVariables = generateEnvironmentExample()
+      .split('\n')
+      .filter((line) => line.length > 0 && !line.startsWith('#') && line.endsWith('='))
+      .map((line) => line.slice(0, -1));
+
+    expect(emptyVariables).toEqual([]);
   });
 });

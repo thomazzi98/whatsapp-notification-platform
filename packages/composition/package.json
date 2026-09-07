@@ -1,0 +1,34 @@
+{
+  "name": "@platform/composition",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Binds domain ports to infrastructure adapters. The only place applications wire dependencies.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@platform/configuration": "workspace:*",
+    "@platform/database": "workspace:*",
+    "@platform/domain": "workspace:*",
+    "@platform/observability": "workspace:*",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

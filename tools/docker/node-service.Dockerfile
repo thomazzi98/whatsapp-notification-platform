@@ -21,8 +21,8 @@ WORKDIR /app
 # means adding a workspace package does not require editing this file.
 FROM base AS dependencies
 COPY --parents package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --parents packages/*/package.json ./
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+COPY --parents packages/*/package.json apps/*/package.json ./
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile
 
 FROM dependencies AS build
@@ -31,7 +31,7 @@ COPY . .
 RUN pnpm --filter "${PACKAGE_NAME}..." build
 # `--legacy` is required because this workspace does not set
 # inject-workspace-packages; without it the deployed node_modules is empty.
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
     pnpm deploy --filter "${PACKAGE_NAME}" --prod --legacy /output
 
 FROM ${NODE_IMAGE} AS runtime

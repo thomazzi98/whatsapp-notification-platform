@@ -10,6 +10,11 @@ export interface ConnectionOptions {
   readonly maximumPoolSize: number;
   readonly statementTimeoutMilliseconds?: number;
   readonly applicationName: string;
+  /**
+   * Called when an idle pooled client fails, which happens whenever the
+   * database goes away underneath the process.
+   */
+  readonly onPoolError?: (error: Error) => void;
 }
 
 export interface DatabaseConnection {
@@ -29,6 +34,9 @@ export function createDatabaseConnection(options: ConnectionOptions): DatabaseCo
     connectionString: options.connectionUrl,
     max: options.maximumPoolSize,
     application_name: options.applicationName,
+    // A readiness probe must not wait on a dead host for longer than the probe
+    // itself; without this, acquiring a client blocks on DNS or TCP timeouts.
+    connectionTimeoutMillis: 2000,
   };
 
   if (options.statementTimeoutMilliseconds !== undefined) {
@@ -36,6 +44,15 @@ export function createDatabaseConnection(options: ConnectionOptions): DatabaseCo
   }
 
   const pool = new Pool(poolConfiguration);
+
+  // Without a listener, an idle client error is an unhandled 'error' event and
+  // Node terminates the process. A database restart would then take the API
+  // down with it, which is exactly the failure the health and readiness split
+  // exists to avoid.
+  pool.on('error', (error: Error) => {
+    options.onPoolError?.(error);
+  });
+
   const database = drizzle(pool, { schema });
 
   return {

@@ -11,20 +11,35 @@ interface SchemaDefinition {
   readonly type?: string;
   readonly defaultValue?: unknown;
   readonly innerType?: z.ZodType;
+  /** A `.transform()` produces a pipe whose input side holds the default. */
+  readonly in?: z.ZodType;
 }
 
 /**
- * Zod wraps a schema once per modifier, so a field carrying both `.default()`
- * and `.meta()` is several layers deep. Walking the chain iteratively keeps the
- * traversal obvious and bounded.
+ * Zod wraps a schema once per modifier, so a field carrying `.default()`,
+ * `.transform()` and `.meta()` is several layers deep. Both wrapper shapes have
+ * to be followed: modifiers such as `.default()` nest under `innerType`, while
+ * `.transform()` produces a pipe whose input side is where an earlier default
+ * lives.
  */
 function unwrapSchemaChain(schema: z.ZodType): z.ZodType[] {
   const chain: z.ZodType[] = [];
-  let current: z.ZodType | undefined = schema;
+  const pending: z.ZodType[] = [schema];
 
-  while (current !== undefined) {
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) {
+      break;
+    }
     chain.push(current);
-    current = (current.def as SchemaDefinition).innerType;
+
+    const definition = current.def as SchemaDefinition;
+    if (definition.innerType !== undefined) {
+      pending.push(definition.innerType);
+    }
+    if (definition.in !== undefined) {
+      pending.push(definition.in);
+    }
   }
 
   return chain;

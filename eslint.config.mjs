@@ -137,7 +137,7 @@ export default typescriptEslint.config(
   },
 
   {
-    files: ['**/scripts/**/*.ts', '**/cli/**/*.ts'],
+    files: ['**/scripts/**/*.ts', '**/cli/**/*.ts', '**/src/main.ts'],
     rules: {
       // These are command-line entry points; exiting with a status code is the
       // correct way for them to report failure.

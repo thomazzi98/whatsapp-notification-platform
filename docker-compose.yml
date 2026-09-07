@@ -45,5 +45,46 @@ services:
       postgres:
         condition: service_healthy
 
+  api:
+    build:
+      context: .
+      dockerfile: tools/docker/node-service.Dockerfile
+      args:
+        PACKAGE_NAME: "@platform/api"
+    command: ["node", "dist/main.js"]
+    restart: unless-stopped
+    # Secrets come from .env, which `pnpm setup:env` generates. It is optional
+    # here so a missing file produces the configuration validator's precise
+    # list of what is absent, rather than a Compose parse error.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 3000
+      DATABASE_APPLICATION_URL: postgres://${DATABASE_APPLICATION_USER:-platform_application}:${DATABASE_APPLICATION_PASSWORD:-platform_application_password}@postgres:5432/${DATABASE_NAME:-notifications}
+      DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD:-platform_system_password}@postgres:5432/${DATABASE_NAME:-notifications}
+    ports:
+      - "127.0.0.1:3100:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # The runtime image is deliberately slim and has no curl; Node's own
+      # fetch avoids adding a package just to answer a health probe.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
 volumes:
   postgres-data:

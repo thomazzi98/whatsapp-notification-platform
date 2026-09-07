@@ -70,8 +70,19 @@ docker compose up
 run does not require hand-crafting base64 keys. `.env.example` itself is generated from the
 configuration schema, and a test fails if the two drift apart.
 
-Compose brings up Postgres and a one-shot `migrate` service that applies migrations and exits.
-Postgres is published on `127.0.0.1:55432` to avoid colliding with other local projects.
+Compose brings up Postgres, a one-shot `migrate` service that applies migrations and exits, and
+the API. Ports are published on the loopback interface only, and shifted off the defaults so this
+stack cannot collide with another local project:
+
+| Service  | Address                 |
+| -------- | ----------------------- |
+| API      | `http://127.0.0.1:3100` |
+| Postgres | `127.0.0.1:55432`       |
+
+The API exposes two probes with deliberately different meanings. `/health` is liveness and checks
+no dependency at all � a liveness probe that touches the database turns a brief Postgres outage
+into a restart storm. `/ready` reports whether this instance can do useful work and returns 503,
+with the reason, when the database is unreachable.
 
 Two database roles are created: `platform_system` owns the schema and runs migrations, while
 `platform_application` serves requests and is deliberately not a table owner. Keeping them

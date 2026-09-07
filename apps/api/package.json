@@ -1,0 +1,40 @@
+{
+  "name": "@platform/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HTTP API for creating and inspecting notifications.",
+  "main": "./dist/main.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-fastify": "catalog:",
+    "@platform/composition": "workspace:*",
+    "@platform/configuration": "workspace:*",
+    "@platform/domain": "workspace:*",
+    "@platform/observability": "workspace:*",
+    "fastify": "catalog:",
+    "pino": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

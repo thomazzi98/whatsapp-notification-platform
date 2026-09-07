@@ -36,3 +36,16 @@ catalog:
   "@types/pg": 8.23.1
   testcontainers: 12.1.0
   "@testcontainers/postgresql": 12.1.0
+
+  # HTTP stack. The Nest packages move together and must stay on one line.
+  "@nestjs/common": 11.2.3
+  "@nestjs/core": 11.2.3
+  "@nestjs/platform-fastify": 11.2.3
+  "@nestjs/testing": 11.2.3
+  "@nestjs/swagger": 11.4.7
+  nestjs-zod: 5.5.0
+  # Pinned to the exact version platform-fastify depends on, so the
+  # process never loads two copies of Fastify.
+  fastify: 5.11.3
+  reflect-metadata: 0.2.2
+  rxjs: 7.8.2
