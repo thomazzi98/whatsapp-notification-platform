@@ -1,0 +1,40 @@
+{
+  "name": "whatsapp-notification-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant WhatsApp notification delivery platform",
+  "license": "MIT",
+  "packageManager": "pnpm@11.26.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.26.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint -- --fix",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "verify:layers": "depcruise --config .dependency-cruiser.cjs packages apps tools",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "turbo run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "4.1.11",
+    "dependency-cruiser": "18.2.0",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-unicorn": "74.0.0",
+    "prettier": "3.9.6",
+    "rimraf": "6.1.2",
+    "tsx": "4.23.13",
+    "turbo": "2.10.12",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.69.0",
+    "vitest": "4.1.11"
+  }
+}

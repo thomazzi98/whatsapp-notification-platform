@@ -1,0 +1,32 @@
+# Normalize all text files to LF in the repository and in working trees.
+# This machine has core.autocrlf=true at the system level; without this file,
+# shell scripts are checked out with CRLF and fail inside Linux containers
+# with the misleading error "exec /app/entrypoint.sh: no such file or directory".
+* text=auto eol=lf
+
+# Files that must be LF for a container to execute or parse them.
+*.sh            text eol=lf
+*.bash          text eol=lf
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+*.dockerfile    text eol=lf
+docker-compose*.yml text eol=lf
+Caddyfile       text eol=lf
+.env.example    text eol=lf
+*.sql           text eol=lf
+
+# Binary assets are never normalized.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
+*.pdf  binary
+
+# Generated files: keep them out of diffs and out of language statistics.
+pnpm-lock.yaml -diff linguist-generated

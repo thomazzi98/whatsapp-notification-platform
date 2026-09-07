@@ -1,0 +1,26 @@
+packages:
+  - apps/*
+  - packages/*
+  - tools/*
+
+# pnpm 11 gates dependency install scripts behind an explicit allowlist.
+# `allowBuilds` replaced the legacy `onlyBuiltDependencies` key.
+allowBuilds:
+  esbuild: true
+  "@tailwindcss/oxide": true
+  unrs-resolver: true
+
+# Versions are declared once here and referenced as "catalog:" by every
+# workspace package, so a shared dependency cannot drift between packages.
+catalog:
+  # Language and tooling
+  typescript: 5.9.3
+  vitest: 4.1.11
+  "@vitest/coverage-v8": 4.1.11
+  eslint: 10.10.0
+  rimraf: 6.1.2
+  tsx: 4.23.13
+
+  # Shared runtime libraries
+  zod: 4.5.4
+  pino: 10.3.1
