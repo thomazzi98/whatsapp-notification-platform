@@ -16,6 +16,17 @@ export {
   updateApplicationRequestSchema,
 } from './applications';
 export {
+  type NotificationCreationRequest,
+  notificationCreationRequestSchema,
+  type NotificationEventResponse,
+  notificationEventResponseSchema,
+  type NotificationListQueryParameters,
+  notificationListQuerySchema,
+  notificationListResponseSchema,
+  type NotificationResponse,
+  notificationResponseSchema,
+} from './notifications';
+export {
   type AuthenticatedUser,
   authenticatedUserSchema,
   type LoginRequest,

@@ -1,7 +1,12 @@
 // Record shapes are part of the contract of the services that return them, so
 // applications import them from here rather than reaching into the persistence
 // adapter directly.
-export type { ApiKeyRecord, ApplicationRecord } from '@platform/database';
+export type {
+  ApiKeyRecord,
+  ApplicationRecord,
+  NotificationEventRecord,
+  NotificationRecord,
+} from '@platform/database';
 export {
   type AuthenticatedPrincipal,
   AuthenticationService,
@@ -15,8 +20,20 @@ export {
   type DependencyCheckResult,
 } from './database/database-health.service';
 export { DatabaseModule } from './database/database.module';
+export {
+  type CreateNotificationInput,
+  type CreateNotificationResult,
+  CreateNotificationService,
+} from './notification/create-notification.service';
+export { NotificationModule } from './notification/notification.module';
+export {
+  type NotificationListQuery,
+  type NotificationListResult,
+  NotificationQueryService,
+} from './notification/notification-query.service';
+export { QueueModule } from './queue/queue.module';
 export { RuntimeModule } from './runtime/runtime.module';
 export { type ApiKeyPrincipal, ApiKeyService, type CreatedApiKey } from './tenancy/api-key.service';
 export { ApplicationService } from './tenancy/application.service';
 export { TenancyModule } from './tenancy/tenancy.module';
-export { APPLICATION_CONFIGURATION, DATABASE_CONNECTION } from './tokens';
+export { APPLICATION_CONFIGURATION, DATABASE_CONNECTION, QUEUE_CLIENT } from './tokens';

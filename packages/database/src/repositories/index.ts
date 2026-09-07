@@ -9,6 +9,12 @@ export {
   type UpdateApplicationInput,
 } from './application.repository';
 export {
+  type IdempotencyClaim,
+  type IdempotencyClaimInput,
+  IdempotencyKeyRepository,
+  type IdempotencyRecord,
+} from './idempotency-key.repository';
+export {
   type InsertNotificationInput,
   type NotificationEventInput,
   type NotificationEventRecord,
@@ -21,3 +27,7 @@ export {
 export { type OrganizationRecord, OrganizationRepository } from './organization.repository';
 export { type SessionWithUser, UserSessionRepository } from './user-session.repository';
 export { type UserRecord, UserRepository } from './user.repository';
+export {
+  type WhatsAppSessionRecord,
+  WhatsAppSessionRepository,
+} from './whatsapp-session.repository';

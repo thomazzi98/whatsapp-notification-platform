@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "catalog:",
+    "@platform/queue": "workspace:*",
     "@platform/testing": "workspace:*",
     "eslint": "catalog:",
     "rimraf": "catalog:",

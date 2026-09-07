@@ -46,6 +46,18 @@ const statusByDomainErrorCode: Record<DomainErrorCode, { status: number; title: 
   api_key_not_found: { status: 404, title: 'Not Found' },
   insufficient_scope: { status: 403, title: 'Forbidden' },
   forbidden: { status: 403, title: 'Forbidden' },
+  invalid_schedule: { status: 422, title: 'Unprocessable Entity' },
+  no_whatsapp_session: { status: 409, title: 'Conflict' },
+  whatsapp_session_not_found: { status: 404, title: 'Not Found' },
+  notification_not_found: { status: 404, title: 'Not Found' },
+  notification_not_cancellable: { status: 409, title: 'Conflict' },
+  // Same key, different payload: a client bug that must not be answered with
+  // the first request's response.
+  idempotency_key_reused: { status: 422, title: 'Unprocessable Entity' },
+  // Holding the connection open until the first request finishes has no clean
+  // timeout story and hides the concurrency from the client.
+  idempotency_key_in_flight: { status: 409, title: 'Conflict' },
+  invalid_cursor: { status: 400, title: 'Bad Request' },
 };
 
 @Catch()

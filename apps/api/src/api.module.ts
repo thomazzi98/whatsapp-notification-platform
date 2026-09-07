@@ -2,6 +2,8 @@ import { type ApplicationConfiguration } from '@platform/configuration';
 import {
   AuthenticationModule,
   DatabaseModule,
+  NotificationModule,
+  QueueModule,
   RuntimeModule,
   TenancyModule,
 } from '@platform/composition';
@@ -12,6 +14,7 @@ import { ApplicationsController } from './dashboard-api/applications/application
 import { AuthenticationController } from './dashboard-api/authentication/authentication.controller';
 import { HealthController } from './health/health.controller';
 import { CurrentApplicationController } from './public-api/applications/current-application.controller';
+import { NotificationsController } from './public-api/notifications/notifications.controller';
 
 @Module({})
 export class ApiModule {
@@ -20,9 +23,12 @@ export class ApiModule {
       module: this,
       imports: [
         DatabaseModule.forConfiguration(configuration),
+        // The API only sends jobs; the worker is the process that supervises.
+        QueueModule.forConfiguration(configuration, { supervise: false }),
         RuntimeModule,
         AuthenticationModule,
         TenancyModule,
+        NotificationModule,
       ],
       controllers: [
         HealthController,
@@ -30,6 +36,7 @@ export class ApiModule {
         ApplicationsController,
         ApiKeysController,
         CurrentApplicationController,
+        NotificationsController,
       ],
     };
   }

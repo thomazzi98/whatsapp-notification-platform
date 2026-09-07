@@ -29,11 +29,10 @@ export function createTestConfiguration(
     },
     queue: { schema: 'pgboss', concurrency: 2, pollingIntervalSeconds: 1 },
     whatsAppProvider: {
-      // eslint-disable-next-line unicorn/prefer-https -- Deliberately unreachable.
       baseUrl: 'http://waha.invalid:3000',
       apiKey: 'a-test-waha-api-key',
       requestTimeoutMilliseconds: 5000,
-      // eslint-disable-next-line unicorn/prefer-https -- Deliberately unreachable.
+
       webhookPublicUrl: 'http://api.invalid:3000',
     },
     security: {

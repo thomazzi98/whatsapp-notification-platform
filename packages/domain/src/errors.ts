@@ -17,6 +17,14 @@ export const domainErrorCodes = [
   'api_key_not_found',
   'insufficient_scope',
   'forbidden',
+  'invalid_schedule',
+  'no_whatsapp_session',
+  'whatsapp_session_not_found',
+  'notification_not_found',
+  'notification_not_cancellable',
+  'idempotency_key_reused',
+  'idempotency_key_in_flight',
+  'invalid_cursor',
 ] as const;
 
 export type DomainErrorCode = (typeof domainErrorCodes)[number];

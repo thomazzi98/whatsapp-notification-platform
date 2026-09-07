@@ -6,3 +6,4 @@
  */
 export const DATABASE_CONNECTION = Symbol('DatabaseConnection');
 export const APPLICATION_CONFIGURATION = Symbol('ApplicationConfiguration');
+export const QUEUE_CLIENT = Symbol('QueueClient');

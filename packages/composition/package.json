@@ -22,7 +22,9 @@
     "@platform/database": "workspace:*",
     "@platform/domain": "workspace:*",
     "@platform/observability": "workspace:*",
+    "@platform/queue": "workspace:*",
     "@platform/security": "workspace:*",
+    "pg-boss": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:"
   },

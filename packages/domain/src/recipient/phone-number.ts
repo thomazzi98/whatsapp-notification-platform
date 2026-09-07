@@ -56,3 +56,22 @@ export function parsePhoneNumber(value: string): string {
 export function toProviderChatIdentifier(e164PhoneNumber: string): string {
   return `${e164PhoneNumber.replace('+', '')}@c.us`;
 }
+
+const VISIBLE_PREFIX_DIGITS = 2;
+const VISIBLE_SUFFIX_DIGITS = 4;
+
+/**
+ * Keeps a number recognisable to an operator holding a support ticket while
+ * removing enough digits that a log or an event payload is not a contact list.
+ */
+export function maskPhoneNumberForLog(phoneNumber: string): string {
+  const digits = phoneNumber.replaceAll(/\D/g, '');
+
+  if (digits.length <= VISIBLE_SUFFIX_DIGITS) {
+    return '*'.repeat(digits.length);
+  }
+
+  const maskedLength = Math.max(0, digits.length - VISIBLE_PREFIX_DIGITS - VISIBLE_SUFFIX_DIGITS);
+
+  return `+${digits.slice(0, VISIBLE_PREFIX_DIGITS)}${'*'.repeat(maskedLength)}${digits.slice(-VISIBLE_SUFFIX_DIGITS)}`;
+}

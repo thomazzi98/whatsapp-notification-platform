@@ -68,6 +68,7 @@ export { RANDOM_PORT, type RandomPort } from './ports/random';
 export {
   InvalidPhoneNumberError,
   isValidPhoneNumber,
+  maskPhoneNumberForLog,
   normalizePhoneNumber,
   parsePhoneNumber,
   toProviderChatIdentifier,
