@@ -129,8 +129,15 @@ export function useLogout(): UseMutationResult<void, Error, void> {
     },
     onSuccess: () => {
       forgetCsrfToken();
-      // Everything cached was read under an identity that no longer applies.
-      queryClient.clear();
+      // Set to null rather than cleared. Clearing leaves the session unknown
+      // rather than decided, and the router cannot send someone to the sign-in
+      // screen on the strength of "not loaded yet" — which left the dashboard
+      // sitting on a page it could no longer read.
+      queryClient.setQueryData(queryKeys.session, null);
+      // Everything else was read under an identity that no longer applies.
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== queryKeys.session[0],
+      });
     },
   });
 }
