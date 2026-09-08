@@ -18,7 +18,6 @@
   "dependencies": {
     "@platform/configuration": "workspace:*",
     "@platform/database": "workspace:*",
-    "@platform/domain": "workspace:*",
     "@testcontainers/postgresql": "catalog:",
     "drizzle-orm": "catalog:"
   },

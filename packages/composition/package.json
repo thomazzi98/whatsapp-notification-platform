@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@nestjs/common": "catalog:",
-    "@nestjs/core": "catalog:",
     "@platform/configuration": "workspace:*",
     "@platform/database": "workspace:*",
     "@platform/domain": "workspace:*",

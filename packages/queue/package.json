@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@platform/database": "workspace:*",
-    "@platform/domain": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "catalog:",
     "pg-boss": "catalog:",

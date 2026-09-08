@@ -203,3 +203,53 @@ describe('logging an error', () => {
     expect(logged.cause?.message).toBe('permission denied');
   });
 });
+
+describe('logging a whole configuration object', () => {
+  it('redacts every secret in it, at whatever depth it sits', () => {
+    const { logger, lines } = createCapturedLogger();
+    // The shape the platform actually holds. Logging it while debugging a boot
+    // problem is the obvious thing to do, and pino matches paths literally —
+    // a name on the list does not protect a value two levels below it.
+    const configuration = {
+      database: {
+        applicationUrl: 'postgres://app:not-a-real-password-one@postgres:5432/notifications',
+        systemUrl: 'postgres://system:not-a-real-password-two@postgres:5432/notifications',
+        maximumPoolSize: 10,
+      },
+      security: {
+        apiKeyPepper: 'K9xW2Qm7ZrT5vY8nH4jL6pD1sG0fCuE7iO9kM2aXbNc=',
+        encryptionKey: 'aB3xK9mQ7wZ2rT5vY8nH4jL6pD1sG0fCuE7iO9kM2aX=',
+        cursorSigningKey: 'Zq8Xw2Qm7ZrT5vY8nH4jL6pD1sG0fCuE7iO9kM2aXbN=',
+        sessionCookieName: 'wnp_session',
+      },
+      observability: {
+        recipientSalt: 'Rs9Xw2Qm7ZrT5vY8nH4jL6pD1sG0fCuE7iO9kM2aXbN=',
+        logLevel: 'info',
+      },
+      whatsAppProvider: {
+        apiKey: 'Wk9Xw2Qm7ZrT5vY8nH4jL6pD1sG0fCuE7iO9kM2aXbN=',
+        baseUrl: 'http://waha:3000',
+      },
+    };
+
+    logger.info({ configuration }, 'Booting');
+
+    const logged = JSON.stringify(lines()[0]);
+    for (const secret of [
+      'not-a-real-password-one',
+      'not-a-real-password-two',
+      configuration.security.apiKeyPepper,
+      configuration.security.encryptionKey,
+      configuration.security.cursorSigningKey,
+      configuration.observability.recipientSalt,
+      configuration.whatsAppProvider.apiKey,
+    ]) {
+      expect(logged).not.toContain(secret);
+    }
+
+    // The values that are not secrets still have to survive, or the line stops
+    // being worth writing.
+    expect(logged).toContain('wnp_session');
+    expect(logged).toContain('http://waha:3000');
+  });
+});

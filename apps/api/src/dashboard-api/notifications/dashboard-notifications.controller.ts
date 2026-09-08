@@ -19,6 +19,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '
 import { CurrentUser } from '../../http/authentication/authenticated-request';
 import { DashboardSessionGuard } from '../../http/authentication/dashboard-session.guard';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
+import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
 import {
   toNotificationEventResponse,
   toNotificationResponse,
@@ -60,7 +61,7 @@ export class DashboardNotificationsController {
   @Get()
   public async list(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
     @Query(new ZodValidationPipe(notificationListQuerySchema))
     query: {
       status?: NotificationStatus | NotificationStatus[];
@@ -94,7 +95,7 @@ export class DashboardNotificationsController {
   @HttpCode(202)
   public async create(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
     @Body(new ZodValidationPipe(notificationCreationRequestSchema))
     body: NotificationCreationRequest,
   ): Promise<NotificationResponse> {
@@ -117,8 +118,8 @@ export class DashboardNotificationsController {
   @Get(':notificationId')
   public async get(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('notificationId') notificationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('notificationId', new UuidParameterPipe('notificationId')) notificationId: string,
   ): Promise<NotificationResponse> {
     await this.authorize(principal, applicationId);
 
@@ -130,8 +131,8 @@ export class DashboardNotificationsController {
   @Get(':notificationId/events')
   public async listEvents(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('notificationId') notificationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('notificationId', new UuidParameterPipe('notificationId')) notificationId: string,
   ): Promise<{ data: NotificationEventResponse[] }> {
     await this.authorize(principal, applicationId);
     const events: readonly NotificationEventRecord[] = await this.notifications.listEvents(
@@ -146,8 +147,8 @@ export class DashboardNotificationsController {
   @HttpCode(200)
   public async cancel(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('notificationId') notificationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('notificationId', new UuidParameterPipe('notificationId')) notificationId: string,
   ): Promise<NotificationResponse> {
     await this.authorize(principal, applicationId);
     const record: NotificationRecord = await this.notifications.cancel(

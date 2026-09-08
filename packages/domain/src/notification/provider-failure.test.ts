@@ -5,6 +5,7 @@ import {
   createProviderFailure,
   isRetryable,
   hasUnknownOutcome,
+  failureClassifications,
   type ProviderFailureCode,
   providerFailureCodes,
 } from './provider-failure';
@@ -36,9 +37,7 @@ describe('failure classification', () => {
     const permanent: ProviderFailureCode[] = [
       'provider_invalid_request',
       'recipient_not_on_whatsapp',
-      'invalid_recipient',
       'session_missing',
-      'session_unavailable',
     ];
 
     for (const code of permanent) {
@@ -124,5 +123,34 @@ describe('createProviderFailure', () => {
     expect(
       isRetryable(createProviderFailure('recipient_not_on_whatsapp', 'Not on WhatsApp.')),
     ).toBe(false);
+  });
+});
+
+describe('the failure vocabulary itself', () => {
+  it('classifies every code it declares', () => {
+    for (const code of providerFailureCodes) {
+      expect(failureClassifications).toContain(classifyFailureCode(code));
+    }
+  });
+
+  it('declares no code the platform cannot produce', () => {
+    // The enum listed two codes — `invalid_recipient` and `session_unavailable`
+    // — that nothing ever constructed, so the taxonomy promised twenty-one
+    // outcomes while nineteen were reachable. A reader cannot tell an
+    // unreachable code from a rare one.
+    const declared = new Set<string>(providerFailureCodes);
+    const constructedElsewhere = new Set([
+      // Produced by the worker and the adapter rather than by this package.
+      'maximum_attempts_exhausted',
+      'delivery_window_expired',
+      'unknown_outcome_fail_closed',
+      'provider_acknowledgement_error',
+      'provider_outcome_unknown',
+    ]);
+
+    expect(declared.size).toBe(19);
+    for (const code of constructedElsewhere) {
+      expect(declared.has(code)).toBe(true);
+    }
   });
 });

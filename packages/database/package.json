@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@platform/domain": "workspace:*",
-    "@platform/observability": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "catalog:"
   },
@@ -31,8 +30,6 @@
     "drizzle-kit": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",
-    "testcontainers": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

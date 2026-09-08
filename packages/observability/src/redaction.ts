@@ -24,7 +24,13 @@ const sensitivePropertyNames: readonly string[] = [
   'apiKeySecret',
   'secret',
   'pepper',
+  // The names the configuration object actually uses. 'pepper' does not match
+  // 'apiKeyPepper', which is how three secrets would have survived a single
+  // logger.info({ configuration }).
+  'apiKeyPepper',
   'encryptionKey',
+  'cursorSigningKey',
+  'recipientSalt',
   'tokenHash',
   'sessionToken',
   'webhookHmacKey',
@@ -54,8 +60,32 @@ const explicitHeaderPaths: readonly string[] = [
   'headers["x-api-key"]',
 ];
 
+/**
+ * pino matches a path literally and has no recursive wildcard, so a secret two
+ * levels down survives a name that is on the list. The configuration object is
+ * the one shape where that matters: it is nested, it is whole, and logging it
+ * is the obvious thing to do while debugging a boot problem.
+ */
+const configurationPaths: readonly string[] = [
+  'configuration.security.apiKeyPepper',
+  'configuration.security.encryptionKey',
+  'configuration.security.cursorSigningKey',
+  'configuration.observability.recipientSalt',
+  'configuration.database.applicationUrl',
+  'configuration.database.systemUrl',
+  'configuration.whatsAppProvider.apiKey',
+  '*.security.apiKeyPepper',
+  '*.security.encryptionKey',
+  '*.security.cursorSigningKey',
+  '*.observability.recipientSalt',
+  '*.database.applicationUrl',
+  '*.database.systemUrl',
+  '*.whatsAppProvider.apiKey',
+];
+
 export const redactedLogPaths: readonly string[] = [
   ...explicitHeaderPaths,
+  ...configurationPaths,
   ...sensitivePropertyNames.flatMap((propertyName) => [propertyName, `*.${propertyName}`]),
 ];
 

@@ -18,7 +18,9 @@ module.exports = {
       to: {
         path:
           '^(packages/(database|queue|provider-whatsapp|composition|observability)|apps/)|' +
-          '^node_modules/(drizzle-orm|pg|pg-boss|@nestjs|fastify|undici|pino)',
+          // pnpm stores every package under .pnpm/<name>@<version>/node_modules/<name>,
+          // so a path anchored at ^node_modules/<name> matches nothing here.
+          'node_modules/(drizzle-orm|pg|pg-boss|@nestjs|fastify|undici|pino)/',
       },
     },
     {
@@ -33,9 +35,19 @@ module.exports = {
       severity: 'error',
       comment:
         'Applications receive use-cases from packages/composition. Importing an adapter ' +
-        'directly lets a controller reach for a database query.',
+        'directly lets a controller reach for a database query or a provider client.',
       from: { path: '^apps/(api|worker)/' },
-      to: { path: '^packages/(database|queue|provider-whatsapp)/' },
+      to: { path: '^packages/(database|provider-whatsapp)/' },
+    },
+    {
+      name: 'only-the-worker-knows-the-queue',
+      severity: 'error',
+      comment:
+        'The worker is the process that consumes jobs, so it names queues and parses job ' +
+        'payloads directly. Everything else enqueues through packages/composition, which is ' +
+        'what keeps the queue out of a request handler.',
+      from: { path: '^apps/api/src/' },
+      to: { path: '^packages/queue/' },
     },
     {
       name: 'no-cross-application-imports',
@@ -66,10 +78,18 @@ module.exports = {
     },
   ],
   options: {
+    // Seen but not traversed. Excluding node_modules outright — which this
+    // config used to do — drops the edge as well as the subtree, and the half
+    // of `domain-stays-pure` that names infrastructure libraries then matches
+    // nothing at all.
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: '(^|/)(dist|coverage|node_modules)/' },
+    exclude: { path: '(^|/)(dist|coverage)/' },
     tsPreCompilationDeps: true,
-    tsConfig: { fileName: 'tsconfig.base.json' },
+    // Not tsconfig.base.json: the manifests point at built output, so without
+    // the source mapping in this file every cross-package import resolves into
+    // `dist`, which the exclude below then drops. The cruise reported success
+    // while seeing no edge between any two packages.
+    tsConfig: { fileName: 'tsconfig.analysis.json' },
     enhancedResolveOptions: {
       exportsFields: ['exports'],
       conditionNames: ['require', 'node', 'types'],

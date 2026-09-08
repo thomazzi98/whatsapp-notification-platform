@@ -7,7 +7,6 @@ import {
   apiKeyLastFour,
   apiKeySecretLength,
   formatApiKey,
-  type ParsedApiKey,
 } from '@platform/domain';
 
 const TOKEN_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -91,12 +90,4 @@ export function generateApiKey(environment: ApiKeyEnvironment, pepper: string): 
     lastFour: apiKeyLastFour(secret),
     keyHash: hashApiKeySecret(secret, pepper),
   };
-}
-
-export function isParsedApiKeyValid(
-  parsed: ParsedApiKey,
-  storedHash: Buffer,
-  pepper: string,
-): boolean {
-  return isApiKeySecretValid(storedHash, parsed.secret, pepper);
 }

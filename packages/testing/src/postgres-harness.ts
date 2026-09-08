@@ -103,6 +103,8 @@ export interface TestDatabaseHandle {
   /** Dispatch jobs queued for one notification. */
   countDispatchJobs: (notificationId: string) => Promise<number>;
   countAllDispatchJobs: () => Promise<number>;
+  /** Jobs on any queue, so a test can assert on more than dispatch. */
+  countJobsOnQueue: (queueName: string) => Promise<number>;
   close: () => Promise<void>;
 }
 
@@ -205,12 +207,15 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
     applicationName: 'test-fixtures',
   });
 
-  async function countJobs(condition: ReturnType<typeof sql> | undefined): Promise<number> {
+  async function countJobs(
+    condition: ReturnType<typeof sql> | undefined,
+    queueName = 'notification.dispatch',
+  ): Promise<number> {
     const result = await connection.database.execute<{ count: string }>(
       condition === undefined
-        ? sql`select count(*)::text as count from pgboss.job where name = 'notification.dispatch'`
+        ? sql`select count(*)::text as count from pgboss.job where name = ${queueName}`
         : sql`select count(*)::text as count from pgboss.job
-              where name = 'notification.dispatch' and ${condition}`,
+              where name = ${queueName} and ${condition}`,
     );
 
     return Number(result.rows[0]?.count ?? '0');
@@ -393,6 +398,7 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
     countDispatchJobs: async (notificationId) =>
       countJobs(sql`data->>'notificationId' = ${notificationId}`),
     countAllDispatchJobs: async () => countJobs(undefined),
+    countJobsOnQueue: async (queueName) => countJobs(undefined, queueName),
     truncateAllTables: async () => {
       // Reference data seeded by a migration must survive: the notification
       // status foreign key points at it, so truncating it makes every insert

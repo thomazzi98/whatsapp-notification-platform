@@ -1,5 +1,5 @@
 import { type ApplicationConfiguration } from '@platform/configuration';
-import { createLogger } from '@platform/observability';
+import { createLogger, logEvents } from '@platform/observability';
 import fastifyCookie from '@fastify/cookie';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -60,7 +60,10 @@ export async function bootstrapApi(configuration: ApplicationConfiguration): Pro
   await application.listen(configuration.http.port, configuration.http.host);
   const url = await application.getUrl();
 
-  logger.info({ event: 'api.started', port: configuration.http.port, url }, 'API is listening');
+  logger.info(
+    { event: logEvents.processStarted, port: configuration.http.port, url },
+    'API is listening',
+  );
 
   return { application, url };
 }

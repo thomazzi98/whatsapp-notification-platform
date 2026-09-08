@@ -323,6 +323,22 @@ describe('receiving a provider callback', () => {
     expect(deliveries.map((delivery) => delivery.eventType)).toContain('message.ack');
   });
 
+  it('leaves a job behind, because storing a callback nobody processes changes nothing', async () => {
+    const connection = await createConnection();
+    const before = await database.countJobsOnQueue('webhook.process');
+
+    await fetch(`${stubBaseUrl}/__stub/sessions/${connection.providerSessionName}/acknowledge`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messageId: 'true_5511999990000@c.us_STUB000002', ack: 2 }),
+    });
+
+    // Every other assertion here stops at the inbox row. Deleting the enqueue
+    // would leave the delivery recorded, the endpoint answering 202, and the
+    // acknowledgement never applied — visible only in the end-to-end suite.
+    expect(await database.countJobsOnQueue('webhook.process')).toBeGreaterThan(before);
+  });
+
   it('refuses a callback for a connection whose signing key cannot be read', async () => {
     // A rotated encryption key or a damaged row is an operator problem, but the
     // caller must not be able to tell it apart from a wrong signature.

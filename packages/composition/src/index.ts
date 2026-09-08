@@ -72,6 +72,11 @@ export {
   type ProcessWebhookResult,
   ProcessWebhookService,
 } from './webhook/process-webhook.service';
+// The two header names the provider signs its callbacks with. An application
+// has to read them off the request; reaching into the adapter for a string is
+// what the layering forbids, so they are re-exported here with everything else
+// the applications may know about the provider.
+export { WEBHOOK_SIGNATURE_HEADER, WEBHOOK_TIMESTAMP_HEADER } from '@platform/provider-whatsapp';
 export { WebhookProcessingModule } from './webhook/webhook-processing.module';
 export { WebhookIngestionModule } from './webhook/webhook.module';
 export {

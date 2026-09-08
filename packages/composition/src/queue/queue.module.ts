@@ -57,13 +57,16 @@ export class QueueModule implements OnApplicationShutdown {
 
   private readonly queue: PgBoss;
   private readonly configuration: ApplicationConfiguration;
+  private readonly logger: Logger;
 
   public constructor(
     @Inject(QUEUE_CLIENT) queue: PgBoss,
     @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
+    @Inject(LOGGER) logger: Logger,
   ) {
     this.queue = queue;
     this.configuration = configuration;
+    this.logger = logger;
   }
 
   public async onApplicationShutdown(): Promise<void> {
@@ -74,5 +77,13 @@ export class QueueModule implements OnApplicationShutdown {
       graceful: true,
       timeout: this.configuration.queue.shutdownTimeoutSeconds * 1000,
     });
+
+    // The queue client is what drains, so it is what knows the drain is over.
+    // Without this line a shutdown that timed out and one that finished
+    // cleanly leave the same trace: none.
+    this.logger.info(
+      { event: logEvents.workerShutdownCompleted },
+      'In-flight jobs finished and the queue client stopped',
+    );
   }
 }

@@ -15,6 +15,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from 
 import { CurrentUser } from '../../http/authentication/authenticated-request';
 import { DashboardSessionGuard } from '../../http/authentication/dashboard-session.guard';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
+import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
 
 function toResponse(record: ApiKeyRecord): ApiKeyResponse {
   return {
@@ -44,7 +45,7 @@ export class ApiKeysController {
   @Get()
   public async list(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
   ): Promise<{ data: ApiKeyResponse[] }> {
     // Establishing the application under the caller's organization first is
     // what stops a key list being read across tenants.
@@ -57,7 +58,7 @@ export class ApiKeysController {
   @Post()
   public async create(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
     @Body(new ZodValidationPipe(apiKeyCreationRequestSchema)) body: ApiKeyCreationRequest,
   ): Promise<ApiKeyCreationResponse> {
     await this.applications.getOrFail(principal.organizationId, applicationId);
@@ -80,8 +81,8 @@ export class ApiKeysController {
   @HttpCode(204)
   public async revoke(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('apiKeyId') apiKeyId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('apiKeyId', new UuidParameterPipe('apiKeyId')) apiKeyId: string,
   ): Promise<void> {
     await this.applications.getOrFail(principal.organizationId, applicationId);
     await this.apiKeys.revoke(applicationId, apiKeyId);

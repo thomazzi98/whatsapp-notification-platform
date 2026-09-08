@@ -16,9 +16,7 @@
     "test:coverage": "vitest run --coverage",
     "clean": "rimraf dist *.tsbuildinfo"
   },
-  "dependencies": {
-    "zod": "catalog:"
-  },
+  "dependencies": {},
   "devDependencies": {
     "eslint": "catalog:",
     "rimraf": "catalog:",

@@ -8,25 +8,14 @@ export const logEvents = {
 
   authenticationSucceeded: 'auth.login.succeeded',
   authenticationFailed: 'auth.login.failed',
-  authenticationSessionExpired: 'auth.session.expired',
-  apiKeyAccepted: 'apikey.authenticated',
   apiKeyRejected: 'apikey.rejected',
-
-  notificationAccepted: 'notification.accepted',
-  notificationDeduplicated: 'notification.deduplicated',
-  notificationEnqueued: 'notification.enqueued',
   notificationClaimSkipped: 'notification.claim_skipped',
   notificationDispatchStarted: 'notification.dispatch.started',
   notificationDispatchPaced: 'notification.dispatch.paced',
   notificationDispatchSucceeded: 'notification.dispatch.succeeded',
   notificationDispatchRetrying: 'notification.dispatch.retrying',
   notificationDispatchFailed: 'notification.dispatch.failed',
-  notificationStateChanged: 'notification.state.changed',
-  notificationStateRejected: 'notification.state.rejected',
   notificationDeadLettered: 'notification.dead_lettered',
-
-  providerRequest: 'provider.request',
-  providerUnavailable: 'provider.unavailable',
   providerSessionStatusChanged: 'provider.session.status.changed',
 
   webhookReceived: 'webhook.received',
@@ -38,10 +27,10 @@ export const logEvents = {
   queueJobCompleted: 'queue.job.completed',
   queueJobFailed: 'queue.job.failed',
 
+  processStarted: 'process.started',
+  httpRequestFailed: 'http.request.failed',
   workerShutdownStarted: 'worker.shutdown.started',
   workerShutdownCompleted: 'worker.shutdown.completed',
-
-  databaseMigrationApplied: 'database.migration.applied',
   healthDependencyDegraded: 'health.dependency.degraded',
   rateLimiterDegraded: 'ratelimit.degraded',
 } as const;

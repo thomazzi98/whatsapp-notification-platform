@@ -22,19 +22,15 @@
     "@nestjs/core": "catalog:",
     "@platform/composition": "workspace:*",
     "@platform/configuration": "workspace:*",
-    "@platform/domain": "workspace:*",
     "@platform/observability": "workspace:*",
     "@platform/queue": "workspace:*",
     "pg-boss": "catalog:",
     "pino": "catalog:",
     "reflect-metadata": "catalog:",
-    "rxjs": "catalog:",
-    "zod": "catalog:"
+    "rxjs": "catalog:"
   },
   "devDependencies": {
     "@nestjs/testing": "catalog:",
-    "@platform/database": "workspace:*",
-    "@platform/provider-whatsapp": "workspace:*",
     "@platform/testing": "workspace:*",
     "@platform/waha-stub": "workspace:*",
     "eslint": "catalog:",

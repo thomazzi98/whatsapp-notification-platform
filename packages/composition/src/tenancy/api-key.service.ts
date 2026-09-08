@@ -2,9 +2,12 @@ import { type ApplicationConfiguration } from '@platform/configuration';
 import { type ApiKeyRecord, ApiKeyRepository, type DatabaseConnection } from '@platform/database';
 import {
   type ApiKeyScope,
+  type ApplicationStatus,
+  canApplicationAcceptNotifications,
   CLOCK_PORT,
   type ClockPort,
   DomainError,
+  isApiKeyScope,
   tryParseApiKey,
 } from '@platform/domain';
 import { isApiKeySecretValid, type GeneratedApiKey, generateApiKey } from '@platform/security';
@@ -100,7 +103,7 @@ export class ApiKeyService {
     if (found === undefined) {
       return undefined;
     }
-    if (found.applicationStatus !== 'ACTIVE') {
+    if (!canApplicationAcceptNotifications(found.applicationStatus as ApplicationStatus)) {
       return undefined;
     }
     if (
@@ -118,7 +121,11 @@ export class ApiKeyService {
       apiKeyId: found.id,
       applicationId: found.applicationId,
       organizationId: found.organizationId,
-      scopes: found.scopes,
+      // The column is a text array with no constraint on its values, so a row
+      // written by anything other than this API could carry a scope the
+      // platform has never heard of. Dropping it is safer than trusting the
+      // cast: an unrecognised scope grants nothing rather than something.
+      scopes: found.scopes.filter((scope): scope is ApiKeyScope => isApiKeyScope(scope)),
     };
   }
 }

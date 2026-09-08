@@ -10,6 +10,7 @@ import {
   withTenantScope,
 } from '@platform/database';
 import {
+  canSessionSend,
   CLOCK_PORT,
   type ClockPort,
   DomainError,
@@ -119,7 +120,7 @@ export class CreateNotificationService {
     // Prefer a connected session, but accept any: a notification created while
     // WhatsApp is disconnected is queued rather than rejected, which is the
     // point of having a queue at all.
-    const connected = sessions.find((session) => session.status === 'WORKING');
+    const connected = sessions.find((session) => canSessionSend(session.status));
     const chosen = connected ?? sessions[0];
 
     if (chosen === undefined) {

@@ -1,4 +1,4 @@
-export { createStubServer, generateStubApiKey, type StubServerOptions } from './create-stub-server';
+export { createStubServer, type StubServerOptions } from './create-stub-server';
 export {
   type FailureMode,
   failureModeForRecipient,

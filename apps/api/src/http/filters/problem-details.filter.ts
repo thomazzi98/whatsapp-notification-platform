@@ -1,5 +1,5 @@
 import { type DomainErrorCode, isDomainError } from '@platform/domain';
-import { getCorrelationId } from '@platform/observability';
+import { getCorrelationId, logEvents } from '@platform/observability';
 import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException } from '@nestjs/common';
 import { type FastifyReply } from 'fastify';
 import { type Logger } from 'pino';
@@ -144,7 +144,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     // is the API working as designed, and logging it at error makes the error
     // stream useless for alerting.
     if (problem.status >= 500) {
-      this.logger.error({ event: 'http.request.failed', error: exception }, problem.detail);
+      this.logger.error({ event: logEvents.httpRequestFailed, error: exception }, problem.detail);
     }
 
     void reply.status(problem.status).type('application/problem+json').send(problem);

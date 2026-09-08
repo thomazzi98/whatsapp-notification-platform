@@ -1,5 +1,3 @@
-import { randomBytes } from 'node:crypto';
-
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import {
@@ -394,8 +392,4 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       sentMessageCount: sentMessageCounter,
     }));
   }
-}
-
-export function generateStubApiKey(): string {
-  return randomBytes(24).toString('hex');
 }

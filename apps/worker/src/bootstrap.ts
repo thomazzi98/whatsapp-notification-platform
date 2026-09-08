@@ -1,5 +1,5 @@
 import { type ApplicationConfiguration } from '@platform/configuration';
-import { createLogger } from '@platform/observability';
+import { createLogger, logEvents } from '@platform/observability';
 import { type INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
@@ -28,11 +28,22 @@ export async function bootstrapWorker(
     { bufferLogs: true, logger: false },
   );
 
+  // A shutdown that hangs and one that drains cleanly look identical from
+  // outside the process unless it says so on the way out.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => {
+      logger.info(
+        { event: logEvents.workerShutdownStarted, signal },
+        'Draining in-flight jobs before exit',
+      );
+    });
+  }
+
   // Without this, SIGTERM kills the process with jobs still in flight instead
   // of letting the queue client drain them.
   context.enableShutdownHooks();
 
-  logger.info({ event: 'worker.started' }, 'Worker is processing jobs');
+  logger.info({ event: logEvents.processStarted }, 'Worker is processing jobs');
 
   return context;
 }

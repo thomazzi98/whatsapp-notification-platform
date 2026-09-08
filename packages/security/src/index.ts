@@ -3,7 +3,6 @@ export {
   type GeneratedApiKey,
   generateApiKey,
   hashApiKeySecret,
-  isParsedApiKeyValid,
 } from './api-key';
 export { decryptSecret, encryptSecret } from './encryption';
 export { hashPassword, isPasswordValid } from './password';

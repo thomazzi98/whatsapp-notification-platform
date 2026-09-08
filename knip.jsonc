@@ -1,0 +1,57 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // The project forbids dead code, and the ban is only as good as the check.
+  // Lint finds an unused local; nothing but this finds a file nobody imports,
+  // a dependency nobody needs, or a function every workspace compiles without.
+  //
+  // Workspaces, entry points and project files are discovered from
+  // pnpm-workspace.yaml and each package manifest. Only what cannot be
+  // discovered is written down here.
+
+  // An export consumed inside its own file is not dead — the `export` keyword
+  // may be there for a test. Only what nothing anywhere imports is reported.
+  "ignoreExportsUsedInFile": true,
+
+  "workspaces": {
+    "packages/configuration": {
+      // Generates .env.example and writes a local .env. Run by name from the
+      // root scripts rather than imported.
+      "entry": ["src/index.ts", "scripts/*.ts"],
+    },
+    "packages/queue": {
+      // The one-shot bootstrap the migrate container runs.
+      "entry": ["src/index.ts", "src/cli/bootstrap.ts"],
+      "includeEntryExports": true,
+    },
+    "apps/end-to-end": {
+      "entry": ["tests/**/*.spec.ts", "playwright.config.ts"],
+    },
+
+    // Plumbing packages exist to serve this repository and nothing else, so an
+    // export no workspace imports is dead surface and is reported as such.
+    "packages/composition": { "includeEntryExports": true },
+    "packages/database": { "includeEntryExports": true },
+    "packages/observability": { "includeEntryExports": true },
+    "packages/security": { "includeEntryExports": true },
+    "packages/testing": { "includeEntryExports": true },
+    "packages/provider-whatsapp": { "includeEntryExports": true },
+    "tools/waha-stub": { "includeEntryExports": true },
+
+    // packages/domain and packages/contracts are deliberately absent from that
+    // list. Their indexes are the shared vocabulary — the state machine's
+    // names, the request and response schemas — and that vocabulary is what a
+    // second consumer would be written against. Reporting a schema as dead
+    // because only its own package happens to reference it today would argue
+    // for deleting the contract in order to satisfy the tool.
+  },
+
+  "ignoreDependencies": [
+    // Loaded by pino at runtime from a name in configuration, never imported.
+    "pino-pretty",
+    // A binary, not a module. It runs the TypeScript entry points behind
+    // `pnpm dev`, `pnpm setup:env` and `pnpm generate:env-example`, and is
+    // declared once at the root so every workspace resolves the same one.
+    "tsx",
+  ],
+}

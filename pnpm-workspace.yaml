@@ -38,7 +38,6 @@ catalog:
   # Language and tooling
   typescript: 5.9.3
   vitest: 4.1.11
-  "@vitest/coverage-v8": 4.1.11
   eslint: 10.10.0
   rimraf: 6.1.2
   tsx: 4.23.13
@@ -50,7 +49,6 @@ catalog:
   drizzle-kit: 0.31.10
   pg: 8.23.0
   "@types/pg": 8.23.1
-  testcontainers: 12.1.0
   "@testcontainers/postgresql": 12.1.0
 
   # HTTP stack. The Nest packages move together and must stay on one line.
@@ -107,3 +105,6 @@ catalog:
   # The same engine as the component tests use, in a real browser, where the
   # rules that need layout and colour can actually run.
   "@axe-core/playwright": 4.13.0
+
+minimumReleaseAgeExclude:
+  - knip@6.35.0

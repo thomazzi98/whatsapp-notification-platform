@@ -564,3 +564,123 @@ describe('rate limiting the public API', () => {
     expect(responses.some((response) => response.statusCode === 429)).toBe(true);
   });
 });
+
+describe('answering a client that got the request wrong', () => {
+  it('refuses a path parameter that cannot be an identifier, rather than failing internally', async () => {
+    const tenant = await createTenant();
+
+    const response = await request({
+      method: 'GET',
+      url: '/v1/notifications/not-a-uuid',
+      bearerToken: tenant.apiKey,
+    });
+
+    // It used to reach `where id = $1` against a uuid column, raise Postgres
+    // 22P02, and surface as a 500 logged at error level — a client typo
+    // arriving on the dashboard as an internal failure.
+    expect(response.statusCode).toBe(400);
+    expect(response.body.errors).toStrictEqual([
+      { path: 'notificationId', code: 'invalid_format', message: 'Expected a UUID.' },
+    ]);
+  });
+
+  it('describes a failure as RFC 9457 problem details, with the media type to match', async () => {
+    const tenant = await createTenant();
+
+    const response = await request({
+      method: 'GET',
+      url: '/v1/notifications/00000000-0000-7000-8000-00000000dead',
+      bearerToken: tenant.apiKey,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(String(response.headers['content-type'])).toContain('application/problem+json');
+    // The type names the problem rather than repeating the status, which is
+    // what makes it worth dereferencing.
+    expect(response.body).toMatchObject({
+      type: expect.stringContaining('/problems/notification_not_found'),
+      title: 'Not Found',
+      status: 404,
+      detail: expect.any(String),
+      instance: '/v1/notifications/00000000-0000-7000-8000-00000000dead',
+    });
+  });
+
+  it('rejects a limit outside the documented bounds instead of clamping it', async () => {
+    const tenant = await createTenant();
+
+    for (const limit of ['0', '101', 'abc']) {
+      const response = await request({
+        method: 'GET',
+        url: `/v1/notifications?limit=${limit}`,
+        bearerToken: tenant.apiKey,
+      });
+
+      expect(response.statusCode).toBe(400);
+    }
+  });
+
+  it('rejects a status that is not one of the eight', async () => {
+    const tenant = await createTenant();
+
+    const response = await request({
+      method: 'GET',
+      url: '/v1/notifications?status=NOT_A_STATUS',
+      bearerToken: tenant.apiKey,
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+});
+
+describe('reading one notification back', () => {
+  it('returns the record it was given, field for field', async () => {
+    const tenant = await createTenant();
+    const created = await createNotification(tenant, { body: 'Your order has shipped.' });
+
+    const response = await request({
+      method: 'GET',
+      url: `/v1/notifications/${String(created.body.id)}`,
+      bearerToken: tenant.apiKey,
+    });
+
+    // Every field of the mapper, not just the status: a handler that dropped
+    // one, or returned a different notification, passed every other test.
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toMatchObject({
+      id: created.body.id,
+      status: 'QUEUED',
+      recipient: '+5511999998888',
+      body: 'Your order has shipped.',
+      attemptCount: 0,
+      maximumAttempts: 5,
+      providerMessageId: null,
+      sentAt: null,
+      deliveredAt: null,
+      readAt: null,
+      failedAt: null,
+      failureCode: null,
+      metadata: {},
+    });
+    expect(response.body.whatsAppSessionId).toEqual(expect.any(String));
+    expect(response.body.createdAt).toEqual(expect.any(String));
+  });
+
+  it('filters the list by recipient, which nothing else exercises', async () => {
+    const tenant = await createTenant();
+    await createNotification(tenant, { recipient: '+5511999998888' });
+    await createNotification(tenant, { recipient: '+5511777776666' });
+
+    const response = await request({
+      method: 'GET',
+      url: '/v1/notifications?recipient=%2B5511777776666',
+      bearerToken: tenant.apiKey,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const recipients = (response.body.data as { recipient: string }[]).map(
+      (entry) => entry.recipient,
+    );
+    expect(recipients).toStrictEqual(['+5511777776666']);
+  });
+});

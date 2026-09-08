@@ -24,10 +24,12 @@ import {
   type NotificationStatus,
   type ProviderEvent,
 } from '@platform/domain';
+import { logEvents } from '@platform/observability';
 import { toProviderEvent } from '@platform/provider-whatsapp';
 import { Inject, Injectable } from '@nestjs/common';
+import { type Logger } from 'pino';
 
-import { DATABASE_CONNECTION } from '../tokens';
+import { DATABASE_CONNECTION, LOGGER } from '../tokens';
 
 export interface ProcessWebhookResult {
   readonly outcome: WebhookOutcome;
@@ -52,11 +54,13 @@ export class ProcessWebhookService {
   private readonly whatsAppSessions: WhatsAppSessionRepository;
   private readonly clock: ClockPort;
   private readonly identifiers: IdentifierGeneratorPort;
+  private readonly logger: Logger;
 
   public constructor(
     @Inject(DATABASE_CONNECTION) connection: DatabaseConnection,
     @Inject(CLOCK_PORT) clock: ClockPort,
     @Inject(IDENTIFIER_GENERATOR_PORT) identifiers: IdentifierGeneratorPort,
+    @Inject(LOGGER) logger: Logger,
   ) {
     this.connection = connection;
     this.deliveries = new WebhookDeliveryRepository(connection.database);
@@ -64,6 +68,7 @@ export class ProcessWebhookService {
     this.whatsAppSessions = new WhatsAppSessionRepository(connection.database);
     this.clock = clock;
     this.identifiers = identifiers;
+    this.logger = logger;
   }
 
   private async applySessionStatus(
@@ -77,6 +82,17 @@ export class ProcessWebhookService {
       lastError: null,
       now: this.clock.now(),
     });
+
+    // A connection dropping out of WORKING is the event an operator most needs
+    // to see, and it was previously visible only by reading the table.
+    this.logger.info(
+      {
+        event: logEvents.providerSessionStatusChanged,
+        whatsAppSessionId: delivery.whatsAppSessionId,
+        status: event.status,
+      },
+      `The provider reports the connection as ${event.status}`,
+    );
 
     return { outcome: 'APPLIED', detail: `session ${event.status}` };
   }

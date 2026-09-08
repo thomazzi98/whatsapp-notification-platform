@@ -193,3 +193,45 @@ describe('reversible secret encryption', () => {
     expect(() => decryptSecret(encrypted, otherKey)).toThrow();
   });
 });
+
+describe('the randomness behind an API key', () => {
+  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+  it('draws every character with equal probability', () => {
+    // Folding a byte with `% 62` would make the first eight letters about a
+    // quarter more likely than the rest, because 256 is not a multiple of 62.
+    // That costs real entropy and is invisible to a test that only checks a
+    // key parses, so the distribution itself is the assertion.
+    const counts = new Map<string, number>();
+    let sampled = 0;
+
+    for (let index = 0; index < 600; index += 1) {
+      const generated = generateApiKey('test', pepper);
+      for (const character of generated.token.slice('wnp_test_'.length)) {
+        counts.set(character, (counts.get(character) ?? 0) + 1);
+        sampled += 1;
+      }
+    }
+
+    const favouredByModuloBias = [...ALPHABET.slice(0, 8)];
+    const favouredShare =
+      favouredByModuloBias.reduce((total, character) => total + (counts.get(character) ?? 0), 0) /
+      sampled;
+    const uniformShare = favouredByModuloBias.length / ALPHABET.length;
+
+    // Uniform is 12.90%; modulo bias would put this near 16.1%. Over roughly
+    // 26,000 characters the standard deviation is about 0.2%, so a two point
+    // window neither flakes nor lets the bias through.
+    expect(favouredShare).toBeGreaterThan(uniformShare - 0.02);
+    expect(favouredShare).toBeLessThan(uniformShare + 0.02);
+    expect(counts.size).toBe(ALPHABET.length);
+  });
+
+  it('never emits a character from outside the alphabet', () => {
+    for (let index = 0; index < 50; index += 1) {
+      const secret = generateApiKey('live', pepper).token.slice('wnp_live_'.length);
+
+      expect(secret).toMatch(/^[A-Za-z0-9]+$/);
+    }
+  });
+});

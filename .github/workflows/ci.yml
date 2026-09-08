@@ -26,6 +26,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The secret scan reads the whole history. A shallow clone would let
+          # it pass by seeing only the last commit, which is the worst possible
+          # outcome for a check of this kind.
+          fetch-depth: 0
 
       - name: Install Node and pnpm
         uses: actions/setup-node@v6
@@ -52,6 +57,21 @@ jobs:
 
       - name: Verify layering
         run: pnpm verify:layers
+
+      # A rule the project states but nobody can check is a rule that decays.
+      - name: Verify nothing is unused
+        run: pnpm verify:unused
+
+      - name: Verify the documentation
+        run: pnpm verify:docs
+
+      # Self-tests itself first: a scanner that has silently stopped matching
+      # reports success, which is worse than not running at all.
+      - name: Scan for credentials
+        run: pnpm verify:secrets
+
+      - name: Audit dependencies
+        run: pnpm audit --prod
 
       # Lint and typecheck build dependencies, not applications, so the
       # deployable packages have emitted nothing yet — and the check below is

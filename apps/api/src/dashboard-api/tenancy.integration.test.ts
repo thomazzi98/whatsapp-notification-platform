@@ -438,6 +438,57 @@ describe('api keys', () => {
     expect(response.statusCode).toBe(403);
   });
 
+  it('refuses a key whose expiry has passed', async () => {
+    const tenant = await registerTenant('expiry@example.com', 'Acme');
+    const created = await request({
+      method: 'POST',
+      url: `/dashboard/applications/${tenant.applicationId}/api-keys`,
+      payload: {
+        name: 'short-lived',
+        scopes: ['notifications:read'],
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      },
+      cookie: tenant.cookie,
+      csrfToken: tenant.csrfToken,
+    });
+
+    const response = await request({
+      method: 'GET',
+      url: '/v1/applications/current',
+      bearerToken: created.body.plaintextKey as string,
+    });
+
+    // The expiry is enforced in the authentication lookup's WHERE clause.
+    // Nothing else exercises it, so removing that clause would let an expired
+    // key keep working indefinitely.
+    expect(created.statusCode).toBe(201);
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('accepts a key whose expiry is still ahead of it', async () => {
+    const tenant = await registerTenant('future@example.com', 'Acme');
+    const created = await request({
+      method: 'POST',
+      url: `/dashboard/applications/${tenant.applicationId}/api-keys`,
+      payload: {
+        name: 'long-lived',
+        scopes: ['notifications:read'],
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      },
+      cookie: tenant.cookie,
+      csrfToken: tenant.csrfToken,
+    });
+
+    const response = await request({
+      method: 'GET',
+      url: '/v1/applications/current',
+      bearerToken: created.body.plaintextKey as string,
+    });
+
+    // Without this, a clause that rejected every dated key would look correct.
+    expect(response.statusCode).toBe(200);
+  });
+
   it('refuses a revoked key immediately', async () => {
     const tenant = await registerTenant('a@example.com', 'Acme');
     const created = await createKey(tenant, ['notifications:read']);

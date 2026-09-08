@@ -12,9 +12,11 @@ import {
   hashSessionToken,
   isPasswordValid,
 } from '@platform/security';
+import { logEvents } from '@platform/observability';
 import { Inject, Injectable } from '@nestjs/common';
+import { type Logger } from 'pino';
 
-import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION } from '../tokens';
+import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION, LOGGER } from '../tokens';
 
 export interface AuthenticatedPrincipal {
   readonly userId: string;
@@ -65,17 +67,35 @@ export class AuthenticationService {
   private readonly sessions: UserSessionRepository;
   private readonly configuration: ApplicationConfiguration;
   private readonly clock: ClockPort;
+  private readonly logger: Logger;
 
   public constructor(
     @Inject(DATABASE_CONNECTION) connection: DatabaseConnection,
     @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
     @Inject(CLOCK_PORT) clock: ClockPort,
+    @Inject(LOGGER) logger: Logger,
   ) {
     this.organizations = new OrganizationRepository(connection.database);
     this.users = new UserRepository(connection.database);
     this.sessions = new UserSessionRepository(connection.database);
     this.configuration = configuration;
     this.clock = clock;
+    this.logger = logger;
+  }
+
+  /**
+   * Every rejected sign-in, with why.
+   *
+   * Without this a credential-guessing run leaves no trace at all: the caller
+   * gets one deliberately identical error and the platform records nothing.
+   * The address is what a limit or a block would be keyed on; the email is
+   * left out because it is the thing being guessed.
+   */
+  private recordFailedSignIn(reason: string, ipAddress: string | null): void {
+    this.logger.warn(
+      { event: logEvents.authenticationFailed, reason, ipAddress },
+      'A sign-in attempt was refused',
+    );
   }
 
   private async establishSession(
@@ -166,12 +186,15 @@ export class AuthenticationService {
       // Still spend the cost of a hash, so response time does not reveal
       // whether the address exists.
       await hashPassword(input.password);
+      this.recordFailedSignIn('unknown_address', input.ipAddress);
       throw invalidCredentials;
     }
     if (user.status !== 'ACTIVE') {
+      this.recordFailedSignIn('account_disabled', input.ipAddress);
       throw new DomainError('account_disabled', 'This account has been disabled.');
     }
     if (user.lockedUntil !== null && user.lockedUntil > now) {
+      this.recordFailedSignIn('account_locked', input.ipAddress);
       throw new DomainError('account_locked', 'Too many failed attempts. Try again later.');
     }
 
@@ -183,6 +206,10 @@ export class AuthenticationService {
           ? new Date(now.getTime() + LOCKOUT_MINUTES * 60_000)
           : null;
       await this.users.recordFailedLogin(user.id, lockUntil);
+      this.recordFailedSignIn(
+        lockUntil === null ? 'wrong_password' : 'locked_out',
+        input.ipAddress,
+      );
       throw invalidCredentials;
     }
 

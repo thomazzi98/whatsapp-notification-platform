@@ -1,11 +1,16 @@
-import { IngestWebhookService, LOGGER } from '@platform/composition';
+import {
+  IngestWebhookService,
+  LOGGER,
+  WEBHOOK_SIGNATURE_HEADER,
+  WEBHOOK_TIMESTAMP_HEADER,
+} from '@platform/composition';
 import { getCorrelationId, logEvents } from '@platform/observability';
-import { WEBHOOK_SIGNATURE_HEADER, WEBHOOK_TIMESTAMP_HEADER } from '@platform/provider-whatsapp';
 import { Controller, Headers, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
 import { type FastifyReply, type FastifyRequest } from 'fastify';
 import { type Logger } from 'pino';
 
 import { readRawBody } from '../../http/raw-body';
+import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
 
 /**
  * Receives provider callbacks.
@@ -36,7 +41,8 @@ export class WhatsAppWebhookController {
   @Post(':whatsAppSessionId')
   @HttpCode(202)
   public async receive(
-    @Param('whatsAppSessionId') whatsAppSessionId: string,
+    @Param('whatsAppSessionId', new UuidParameterPipe('whatsAppSessionId'))
+    whatsAppSessionId: string,
     @Headers(WEBHOOK_SIGNATURE_HEADER) signature: string | undefined,
     @Headers(WEBHOOK_TIMESTAMP_HEADER) timestampHeader: string | undefined,
     @Req() request: FastifyRequest,

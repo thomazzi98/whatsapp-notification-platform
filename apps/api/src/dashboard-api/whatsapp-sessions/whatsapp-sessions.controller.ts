@@ -15,6 +15,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from 
 import { CurrentUser } from '../../http/authentication/authenticated-request';
 import { DashboardSessionGuard } from '../../http/authentication/dashboard-session.guard';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
+import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
 
 function toResponse(record: WhatsAppSessionRecord): WhatsAppSessionResponse {
   return {
@@ -58,7 +59,7 @@ export class WhatsAppSessionsController {
   @Get()
   public async list(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
   ): Promise<{ data: WhatsAppSessionResponse[] }> {
     await this.authorize(principal, applicationId);
     const records = await this.sessions.list(applicationId);
@@ -70,7 +71,7 @@ export class WhatsAppSessionsController {
   @HttpCode(201)
   public async create(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
     @Body(new ZodValidationPipe(whatsAppSessionCreationRequestSchema))
     body: WhatsAppSessionCreationRequest,
   ): Promise<WhatsAppSessionResponse> {
@@ -83,8 +84,9 @@ export class WhatsAppSessionsController {
   @Get(':whatsAppSessionId')
   public async get(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('whatsAppSessionId') whatsAppSessionId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('whatsAppSessionId', new UuidParameterPipe('whatsAppSessionId'))
+    whatsAppSessionId: string,
   ): Promise<WhatsAppSessionResponse> {
     await this.authorize(principal, applicationId);
 
@@ -101,8 +103,9 @@ export class WhatsAppSessionsController {
   @Get(':whatsAppSessionId/qr-code')
   public async getQrCode(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('whatsAppSessionId') whatsAppSessionId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('whatsAppSessionId', new UuidParameterPipe('whatsAppSessionId'))
+    whatsAppSessionId: string,
   ): Promise<QrCodeResponse> {
     await this.authorize(principal, applicationId);
     const code = await this.sessions.getQrCode(applicationId, whatsAppSessionId);
@@ -114,8 +117,9 @@ export class WhatsAppSessionsController {
   @HttpCode(200)
   public async start(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('whatsAppSessionId') whatsAppSessionId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('whatsAppSessionId', new UuidParameterPipe('whatsAppSessionId'))
+    whatsAppSessionId: string,
   ): Promise<WhatsAppSessionResponse> {
     await this.authorize(principal, applicationId);
 
@@ -126,8 +130,9 @@ export class WhatsAppSessionsController {
   @HttpCode(200)
   public async stop(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('whatsAppSessionId') whatsAppSessionId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('whatsAppSessionId', new UuidParameterPipe('whatsAppSessionId'))
+    whatsAppSessionId: string,
   ): Promise<WhatsAppSessionResponse> {
     await this.authorize(principal, applicationId);
 
@@ -142,8 +147,9 @@ export class WhatsAppSessionsController {
   @HttpCode(200)
   public async logout(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('whatsAppSessionId') whatsAppSessionId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('whatsAppSessionId', new UuidParameterPipe('whatsAppSessionId'))
+    whatsAppSessionId: string,
   ): Promise<WhatsAppSessionResponse> {
     await this.authorize(principal, applicationId);
 
@@ -154,8 +160,9 @@ export class WhatsAppSessionsController {
   @HttpCode(204)
   public async remove(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
-    @Param('whatsAppSessionId') whatsAppSessionId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Param('whatsAppSessionId', new UuidParameterPipe('whatsAppSessionId'))
+    whatsAppSessionId: string,
   ): Promise<void> {
     await this.authorize(principal, applicationId);
     await this.sessions.delete(applicationId, whatsAppSessionId);

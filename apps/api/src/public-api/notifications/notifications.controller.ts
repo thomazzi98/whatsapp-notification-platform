@@ -30,6 +30,7 @@ import { ApiKeyRateLimitGuard } from '../../http/rate-limit/rate-limit.guard';
 import { toNotificationEventResponse, toNotificationResponse } from './notification-response';
 import { CurrentApiKey } from '../../http/authentication/authenticated-request';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
+import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
 
 function toStatusList(
   status: NotificationStatus | NotificationStatus[] | undefined,
@@ -127,7 +128,7 @@ export class NotificationsController {
   @RequireScopes('notifications:read')
   public async get(
     @CurrentApiKey() principal: ApiKeyPrincipal,
-    @Param('notificationId') notificationId: string,
+    @Param('notificationId', new UuidParameterPipe('notificationId')) notificationId: string,
   ): Promise<NotificationResponse> {
     const record = await this.notifications.getOrFail(principal.applicationId, notificationId);
 
@@ -138,7 +139,7 @@ export class NotificationsController {
   @RequireScopes('notifications:read')
   public async listEvents(
     @CurrentApiKey() principal: ApiKeyPrincipal,
-    @Param('notificationId') notificationId: string,
+    @Param('notificationId', new UuidParameterPipe('notificationId')) notificationId: string,
   ): Promise<{ data: NotificationEventResponse[] }> {
     const events = await this.notifications.listEvents(principal.applicationId, notificationId);
 
@@ -150,7 +151,7 @@ export class NotificationsController {
   @RequireScopes('notifications:write')
   public async cancel(
     @CurrentApiKey() principal: ApiKeyPrincipal,
-    @Param('notificationId') notificationId: string,
+    @Param('notificationId', new UuidParameterPipe('notificationId')) notificationId: string,
   ): Promise<NotificationResponse> {
     const record = await this.notifications.cancel(principal.applicationId, notificationId);
 

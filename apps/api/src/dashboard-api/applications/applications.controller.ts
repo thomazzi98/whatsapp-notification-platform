@@ -25,6 +25,7 @@ import {
 import { CurrentUser } from '../../http/authentication/authenticated-request';
 import { DashboardSessionGuard } from '../../http/authentication/dashboard-session.guard';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
+import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
 
 function toResponse(record: ApplicationRecord): ApplicationResponse {
   return {
@@ -72,7 +73,7 @@ export class ApplicationsController {
   @Get(':applicationId')
   public async get(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
   ): Promise<ApplicationResponse> {
     // Scoped by organization, so an application belonging to another tenant is
     // reported as not found rather than forbidden — the API must not confirm
@@ -85,7 +86,7 @@ export class ApplicationsController {
   @Patch(':applicationId')
   public async update(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
     @Body(new ZodValidationPipe(updateApplicationRequestSchema)) body: UpdateApplicationRequest,
   ): Promise<ApplicationResponse> {
     const record = await this.applications.update(principal.organizationId, applicationId, body);
@@ -97,7 +98,7 @@ export class ApplicationsController {
   @HttpCode(204)
   public async archive(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('applicationId') applicationId: string,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
   ): Promise<void> {
     await this.applications.archive(principal.organizationId, applicationId);
   }

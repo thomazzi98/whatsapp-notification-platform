@@ -1,0 +1,15 @@
+{
+  // Read by the two static analysers, knip and dependency-cruiser, and by
+  // nothing else. The package manifests point at built output, so without this
+  // mapping both tools resolve every cross-package import into `dist` — which
+  // they then exclude — and see a repository with no edges between packages at
+  // all. Each then reports success while checking nothing. The TypeScript build
+  // uses project references and never reads this file.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@platform/*": ["./packages/*/src/index.ts", "./tools/*/src/index.ts"]
+    }
+  }
+}
