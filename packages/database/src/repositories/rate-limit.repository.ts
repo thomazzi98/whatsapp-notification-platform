@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 
-import { type QueryExecutor } from './notification.repository';
+import { type Database } from '../connection';
 
 export interface RateLimitDecision {
   readonly isAllowed: boolean;
@@ -22,10 +22,14 @@ interface RateLimitRow extends Record<string, unknown> {
   readonly resets_after_seconds: number;
 }
 
+/**
+ * Takes a pool rather than a query executor, because it opens a transaction of
+ * its own and must not be able to change the durability of somebody else's.
+ */
 export class RateLimitRepository {
-  private readonly database: QueryExecutor;
+  private readonly database: Database;
 
-  public constructor(database: QueryExecutor) {
+  public constructor(database: Database) {
     this.database = database;
   }
 
@@ -41,29 +45,39 @@ export class RateLimitRepository {
     policy: RateLimitPolicy,
     now: Date,
   ): Promise<RateLimitDecision> {
-    // Every argument is cast: a bind parameter arrives untyped, and Postgres
-    // cannot resolve which overload was meant from five unknowns.
-    const result = await this.database.execute<RateLimitRow>(sql`
-      select * from consume_rate_limit(
-        ${subject}::text,
-        ${policy.requestsPerPeriod}::integer,
-        ${policy.burstAllowance}::integer,
-        ${policy.periodSeconds}::integer,
-        ${now}::timestamptz
-      )
-    `);
-    const row = result.rows[0];
+    return this.database.transaction(async (transaction) => {
+      // The decision is a write, and it is on the path of every metered
+      // request. Waiting for a write-ahead log flush costs tens of
+      // milliseconds on ordinary hardware -- measured at 37 ms against 0.6 ms
+      // here -- to protect state that is advisory: the limiter already fails
+      // open, and the worst a lost update can do is grant a caller a few extra
+      // requests after an unclean shutdown.
+      await transaction.execute(sql`SET LOCAL synchronous_commit = off`);
 
-    if (row === undefined) {
-      throw new Error('The rate limiter returned no decision.');
-    }
+      // Every argument is cast: a bind parameter arrives untyped, and Postgres
+      // cannot resolve which overload was meant from five unknowns.
+      const result = await transaction.execute<RateLimitRow>(sql`
+        select * from consume_rate_limit(
+          ${subject}::text,
+          ${policy.requestsPerPeriod}::integer,
+          ${policy.burstAllowance}::integer,
+          ${policy.periodSeconds}::integer,
+          ${now}::timestamptz
+        )
+      `);
+      const row = result.rows[0];
 
-    return {
-      isAllowed: row.is_allowed,
-      remainingRequests: Number(row.remaining_requests),
-      retryAfterSeconds: Number(row.retry_after_seconds),
-      resetsAfterSeconds: Number(row.resets_after_seconds),
-    };
+      if (row === undefined) {
+        throw new Error('The rate limiter returned no decision.');
+      }
+
+      return {
+        isAllowed: row.is_allowed,
+        remainingRequests: Number(row.remaining_requests),
+        retryAfterSeconds: Number(row.retry_after_seconds),
+        resetsAfterSeconds: Number(row.resets_after_seconds),
+      };
+    });
   }
 
   /** Removes buckets too old to belong to any window. */
