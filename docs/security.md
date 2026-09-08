@@ -101,6 +101,12 @@ tenant-scoped dashboard, not in a log aggregator where retention and access
 control are weaker. Phone numbers reach logs only as a salted hash and a masked
 form.
 
+Errors are reduced before they are logged, to type, message, code, stack and
+cause. The driver's error object carries its whole client — connection
+parameters, socket state — and pino's default serializer copies every own
+property, so a database restart used to write the host and the role it connects
+as into the log repeatedly.
+
 Nothing but `.env.example` is committed, and it contains placeholders. The
 `.dockerignore` excludes `.env` from every image.
 
@@ -145,14 +151,15 @@ a query nobody intended.
 The review ran `pnpm audit`, read the history for committed secrets, checked the
 browser bundle for leaked configuration, and worked through the surfaces above.
 
-| Finding                                                                                                                                                                                                 | Action                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Three moderate Fastify advisories (`GHSA-w2qp-rph6-63g4`, `GHSA-3m5p-2c4r-xxw2`, and one further), all fixed in 5.12.1. `@nestjs/platform-fastify@11.2.3` pins 5.11.3 exactly and has no newer release. | Fixed. A workspace override lifts the whole tree to 5.12.3, keeping a single copy of Fastify in the process.                        |
-| `GHSA-67mh-4wv8-2f99` in esbuild, reached through drizzle-kit's legacy loader. Development only, and the affected code path is a dev server this project never runs.                                    | Fixed rather than accepted: an advisory that is merely unreachable today is one nobody re-reads tomorrow. Overridden to `^0.25.12`. |
-| Tenant isolation relied entirely on application-level scoping. The README and a source comment already described row level security that did not exist.                                                 | Fixed. Policies, a non-login tenant role, `withTenantScope`, and an isolation test.                                                 |
-| `@nestjs/swagger` and `nestjs-zod` sat in the dependency catalog, used by nothing.                                                                                                                      | Removed. Unused dependency declarations are attack surface that nobody audits.                                                      |
-| No committed secrets in history; only `.env.example`, which holds placeholders.                                                                                                                         | No action.                                                                                                                          |
-| No configuration in the browser bundle.                                                                                                                                                                 | No action. The single-origin design is what makes this structural rather than lucky.                                                |
+| Finding                                                                                                                                                                                                 | Action                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Three moderate Fastify advisories (`GHSA-w2qp-rph6-63g4`, `GHSA-3m5p-2c4r-xxw2`, and one further), all fixed in 5.12.1. `@nestjs/platform-fastify@11.2.3` pins 5.11.3 exactly and has no newer release. | Fixed. A workspace override lifts the whole tree to 5.12.3, keeping a single copy of Fastify in the process.                                |
+| `GHSA-67mh-4wv8-2f99` in esbuild, reached through drizzle-kit's legacy loader. Development only, and the affected code path is a dev server this project never runs.                                    | Fixed rather than accepted: an advisory that is merely unreachable today is one nobody re-reads tomorrow. Overridden to `^0.25.12`.         |
+| Tenant isolation relied entirely on application-level scoping. The README and a source comment already described row level security that did not exist.                                                 | Fixed. Policies, a non-login tenant role, `withTenantScope`, and an isolation test.                                                         |
+| `@nestjs/swagger` and `nestjs-zod` sat in the dependency catalog, used by nothing.                                                                                                                      | Removed. Unused dependency declarations are attack surface that nobody audits.                                                              |
+| A database outage logged the driver's entire client object, including the host and the role it connects as, once per failed query.                                                                      | Fixed. Errors are serialised to type, message, code, stack and cause. Found by stopping Postgres rather than by reading the redaction list. |
+| No committed secrets in history; only `.env.example`, which holds placeholders.                                                                                                                         | No action.                                                                                                                                  |
+| No configuration in the browser bundle.                                                                                                                                                                 | No action. The single-origin design is what makes this structural rather than lucky.                                                        |
 
 ## What is out of scope, and why
 
