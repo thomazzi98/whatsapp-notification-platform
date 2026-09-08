@@ -192,9 +192,45 @@ database turns a thirty-second blip into a restart storm.
 
 `/ready` reports whether this instance can do useful work: it checks the
 database and the queue, and returns 503 with a reason when they are unreachable.
-WAHA is reported as informational and never affects the status code — a WhatsApp
-outage must not take the dashboard offline exactly when an operator needs to see
-the queue.
+The queue check is not redundant with the database one — the queue lives in a
+schema the runtime role does not own, provisioned by a separate step, and both
+ways it goes wrong are invisible to `select 1`: a queue that was never declared,
+or one the role has no permission to insert into. Both were real failures during
+development, and both first appeared as a 500 on somebody's request.
+
+WAHA is deliberately absent from the probe. A WhatsApp outage must not take the
+dashboard offline exactly when an operator needs to see the queue.
+
+## What happens when a dependency goes away
+
+Answers from actually pulling the plug rather than from reading the code.
+
+**The worker is restarted mid-dispatch.** Nothing is lost. A notification
+created and immediately interrupted still reached `SENT`: the claim is a
+compare-and-swap, the attempt was already recorded, and the job was redelivered
+to the restarted process.
+
+**Postgres is stopped.** The API stays up and answers `/health` while `/ready`
+returns 503 with the reason, and it recovers on its own once the database comes
+back — which is the entire point of the split. Getting there took two fixes the
+drill found and nothing else would have:
+
+- pg-boss is an `EventEmitter`, and one that emits `error` with nobody
+  listening terminates the process. A database restart therefore killed the API
+  outright: a restart storm caused by the very dependency the liveness probe
+  refuses to check. The queue client now requires an error listener at
+  construction, so it cannot be forgotten.
+- The driver's error object carries the entire client on it, including the host
+  and the role it connects as, and pino's default serializer copies every own
+  property. One restart wrote several kilobytes of internals per line. Errors
+  are now reduced to type, message, code, stack and cause.
+
+**WAHA is unreachable.** A notification created while the provider is down
+reaches `RETRYING` with `recipient_check_failed` — the recipient check is the
+first call the dispatcher makes, so that is where the outage surfaces — and the
+code is classified retryable, so it waits on the backoff curve rather than
+failing. The API, the dashboard and `/ready` are all unaffected, which is the
+whole reason the provider is not part of the readiness probe.
 
 ## Where the seams are
 

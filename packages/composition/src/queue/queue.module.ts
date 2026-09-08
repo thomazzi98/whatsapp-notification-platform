@@ -9,7 +9,11 @@ import {
 } from '@nestjs/common';
 import { type PgBoss } from 'pg-boss';
 
-import { APPLICATION_CONFIGURATION, QUEUE_CLIENT } from '../tokens';
+import { logEvents } from '@platform/observability';
+import { type Logger } from 'pino';
+
+import { APPLICATION_CONFIGURATION, LOGGER, QUEUE_CLIENT } from '../tokens';
+import { QueueHealthService } from './queue-health.service';
 
 @Global()
 @Module({})
@@ -28,18 +32,26 @@ export class QueueModule implements OnApplicationShutdown {
       providers: [
         {
           provide: QUEUE_CLIENT,
-          useFactory: async (): Promise<PgBoss> => {
+          inject: [LOGGER],
+          useFactory: async (logger: Logger): Promise<PgBoss> => {
             const client = createQueueClient({
               connectionUrl: configuration.database.systemUrl,
               schema: configuration.queue.schema,
               supervise: options.supervise,
+              onError: (error) => {
+                logger.error(
+                  { event: logEvents.healthDependencyDegraded, dependency: 'queue', error },
+                  'The queue client reported a failure',
+                );
+              },
             });
             await client.start();
             return client;
           },
         },
+        QueueHealthService,
       ],
-      exports: [QUEUE_CLIENT],
+      exports: [QUEUE_CLIENT, QueueHealthService],
     };
   }
 

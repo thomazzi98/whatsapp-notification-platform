@@ -13,10 +13,20 @@ export interface QueueClientOptions {
    * not both try to maintain the same tables.
    */
   readonly supervise: boolean;
+  /**
+   * Called when the queue client reports a failure of its own.
+   *
+   * Not optional. pg-boss is an EventEmitter, and an EventEmitter that emits
+   * `error` with nobody listening terminates the process -- so a database
+   * restart would take the API down with it, which is exactly the failure the
+   * split between liveness and readiness exists to avoid. Requiring the
+   * listener makes that impossible to forget.
+   */
+  readonly onError: (error: Error) => void;
 }
 
 export function createQueueClient(options: QueueClientOptions): PgBoss {
-  return new PgBoss({
+  const boss = new PgBoss({
     connectionString: options.connectionUrl,
     schema: options.schema,
     supervise: options.supervise,
@@ -29,6 +39,10 @@ export function createQueueClient(options: QueueClientOptions): PgBoss {
     // nor the worker races to install the queue schema at startup.
     migrate: false,
   });
+
+  boss.on('error', options.onError);
+
+  return boss;
 }
 
 /**

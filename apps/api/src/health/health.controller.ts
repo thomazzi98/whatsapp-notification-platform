@@ -1,4 +1,8 @@
-import { DatabaseHealthService, type DependencyCheckResult } from '@platform/composition';
+import {
+  DatabaseHealthService,
+  type DependencyCheckResult,
+  QueueHealthService,
+} from '@platform/composition';
 import { Controller, Get, HttpCode, Res } from '@nestjs/common';
 import { type FastifyReply } from 'fastify';
 
@@ -16,9 +20,11 @@ interface ReadinessResponse {
 @Controller()
 export class HealthController {
   private readonly databaseHealth: DatabaseHealthService;
+  private readonly queueHealth: QueueHealthService;
 
-  public constructor(databaseHealth: DatabaseHealthService) {
+  public constructor(databaseHealth: DatabaseHealthService, queueHealth: QueueHealthService) {
     this.databaseHealth = databaseHealth;
+    this.queueHealth = queueHealth;
   }
 
   /**
@@ -50,14 +56,19 @@ export class HealthController {
   public async readiness(
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<ReadinessResponse> {
-    const database = await this.databaseHealth.check();
-    const isReady = database.status === 'up';
+    // Both, and together: an instance that can reach the database but cannot
+    // hand work to the worker accepts notifications nothing will ever deliver.
+    const [database, queue] = await Promise.all([
+      this.databaseHealth.check(),
+      this.queueHealth.check(),
+    ]);
+    const isReady = database.status === 'up' && queue.status === 'up';
 
     void reply.status(isReady ? 200 : 503);
 
     return {
       status: isReady ? 'ready' : 'not_ready',
-      checks: { database },
+      checks: { database, queue },
     };
   }
 }

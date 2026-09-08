@@ -170,3 +170,36 @@ describe('createLogger', () => {
     expect(captured.join('')).toContain('at the threshold');
   });
 });
+
+describe('logging an error', () => {
+  it('keeps what identifies it and drops what the driver attached', () => {
+    const { logger, lines } = createCapturedLogger();
+    const failure = Object.assign(new Error('terminating connection'), {
+      code: '57P01',
+      // A pg error carries its whole client, including where it connects and
+      // as whom. Copying that into a log line is several kilobytes of
+      // internals, and some of them are not ours to write down.
+      client: { connectionParameters: { user: 'platform_application', host: 'postgres' } },
+    });
+
+    logger.error({ error: failure }, 'A pooled database client failed');
+
+    const [line] = lines();
+    const logged = line?.error as Record<string, unknown>;
+    expect(logged.type).toBe('Error');
+    expect(logged.message).toBe('terminating connection');
+    expect(logged.code).toBe('57P01');
+    expect(logged.client).toBeUndefined();
+  });
+
+  it('keeps a cause, because that is usually the real reason', () => {
+    const { logger, lines } = createCapturedLogger();
+    const failure = new Error('Failed query', { cause: new Error('permission denied') });
+
+    logger.error({ error: failure }, 'The query failed');
+
+    const [line] = lines();
+    const logged = line?.error as { cause?: { message?: string } };
+    expect(logged.cause?.message).toBe('permission denied');
+  });
+});

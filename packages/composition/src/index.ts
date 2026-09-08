@@ -46,6 +46,7 @@ export {
   NotificationQueryService,
 } from './notification/notification-query.service';
 export { WhatsAppProviderModule } from './provider/whatsapp-provider.module';
+export { QueueHealthService } from './queue/queue-health.service';
 export { QueueModule } from './queue/queue.module';
 export { RateLimitModule } from './rate-limit/rate-limit.module';
 export {

@@ -28,6 +28,31 @@ function buildTransport(format: LogFormat): LoggerOptions['transport'] {
   };
 }
 
+/**
+ * Reduces an error to what identifies it.
+ *
+ * A driver error carries its whole client: connection parameters, socket
+ * state, the type catalogue. pino's default serializer copies every own
+ * property, so one database restart writes several kilobytes of internals per
+ * line -- including the host and the role it connects as. Everything an
+ * operator can act on is in these five fields.
+ */
+function serializeError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { message: String(error) };
+  }
+
+  const code = (error as { code?: unknown }).code;
+
+  return {
+    type: error.name,
+    message: error.message,
+    ...(typeof code === 'string' && { code }),
+    stack: error.stack,
+    ...(error.cause !== undefined && { cause: serializeError(error.cause) }),
+  };
+}
+
 export function createLogger(configuration: LoggerConfiguration): Logger {
   const options: LoggerOptions = {
     level: configuration.level,
@@ -39,6 +64,7 @@ export function createLogger(configuration: LoggerConfiguration): Logger {
     timestamp: pino.stdTimeFunctions.isoTime,
     messageKey: 'message',
     errorKey: 'error',
+    serializers: { error: serializeError },
     formatters: {
       level: (label: string) => ({ level: label }),
     },

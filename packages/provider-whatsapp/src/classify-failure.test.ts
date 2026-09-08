@@ -136,3 +136,37 @@ describe('classifyTransportError', () => {
     }
   });
 });
+
+describe('a 422 that is about the session rather than the payload', () => {
+  it('is retried, because a disconnected session reconnects on its own', () => {
+    // The provider answers 422 for both, so the message is the only signal.
+    // Treating this one as permanent throws away a message that would have
+    // gone out minutes later — which is what happened when the provider was
+    // restarted mid-flight.
+    const failure = classifyHttpStatus(422, '{"message":"The session is not connected."}');
+
+    expect(failure.code).toBe('session_not_ready');
+    expect(failure.classification).toBe('RETRYABLE');
+  });
+
+  it('covers the other words the provider uses for the same state', () => {
+    const messages = [
+      'The session is not ready',
+      'session status is not WORKING',
+      'The session is starting',
+      'Session is stopped',
+      'The session needs to scan a code',
+    ];
+
+    for (const message of messages) {
+      expect(classifyHttpStatus(422, message).code).toBe('session_not_ready');
+    }
+  });
+
+  it('leaves a payload rejection permanent, because it will be rejected again', () => {
+    const failure = classifyHttpStatus(422, 'chatId is required');
+
+    expect(failure.code).toBe('provider_invalid_request');
+    expect(failure.classification).toBe('PERMANENT');
+  });
+});

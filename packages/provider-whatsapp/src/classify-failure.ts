@@ -14,7 +14,7 @@ import {
  * means the platform's own credentials are wrong, so every send will fail until
  * an operator fixes it and retrying only hides that; and a 422 means the
  * payload the platform built was rejected, which will be rejected identically
- * next time.
+ * next time -- unless it is about the session, see below.
  */
 const codeByStatus: Record<number, ProviderFailureCode> = {
   401: 'provider_unauthorized',
@@ -30,18 +30,44 @@ const codeByStatus: Record<number, ProviderFailureCode> = {
 
 const RETRY_AFTER_HEADER = 'retry-after';
 
+/**
+ * The one 422 that is not about the payload.
+ *
+ * WAHA answers 422 both for a request it cannot parse and for a session that
+ * is not connected, and those need opposite treatment: the first will be
+ * rejected identically forever, the second fixes itself the moment the phone
+ * reconnects. Treating the second as permanent throws away a message that
+ * would have gone out minutes later.
+ *
+ * Matching on the message is unpleasant and it is the only signal there is —
+ * the status is identical. It fails safe: anything this does not recognise
+ * stays permanent, which is the behaviour it had before.
+ *
+ * Found by restarting the provider mid-flight, which left the platform's
+ * record of the session saying WORKING while the provider had forgotten it.
+ */
+const SESSION_STATE_PATTERN =
+  /session.*(not connected|not ready|not working|starting|stopped|scan)/i;
+
 export function classifyHttpStatus(
   status: number,
   message: string,
   headers?: Headers,
 ): ProviderFailure {
-  const code = codeByStatus[status] ?? 'provider_unknown_error';
+  const code = readCode(status, message);
   const retryAfterSeconds = readRetryAfterSeconds(headers);
 
   return createProviderFailure(code, message, {
     providerStatusCode: status,
     ...(retryAfterSeconds !== undefined && { retryAfterSeconds }),
   });
+}
+
+function readCode(status: number, message: string): ProviderFailureCode {
+  if (status === 422 && SESSION_STATE_PATTERN.test(message)) {
+    return 'session_not_ready';
+  }
+  return codeByStatus[status] ?? 'provider_unknown_error';
 }
 
 function readRetryAfterSeconds(headers: Headers | undefined): number | undefined {

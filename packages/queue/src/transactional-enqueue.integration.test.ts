@@ -22,6 +22,8 @@ import { queueNames } from './queue-definitions';
  */
 let connection: DatabaseConnection;
 let boss: PgBoss;
+/** Collected rather than ignored: an unobserved failure here is a lost job. */
+const failures: Error[] = [];
 let organizationId: string;
 
 beforeAll(async () => {
@@ -32,7 +34,14 @@ beforeAll(async () => {
     applicationName: 'transactional-enqueue-test',
   });
 
-  boss = createQueueClient({ connectionUrl, schema: 'pgboss', supervise: false });
+  boss = createQueueClient({
+    connectionUrl,
+    schema: 'pgboss',
+    supervise: false,
+    onError: (error) => {
+      failures.push(error);
+    },
+  });
   await boss.start();
 }, 180_000);
 

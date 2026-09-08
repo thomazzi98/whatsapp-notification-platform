@@ -14,3 +14,4 @@ export {
   provisionQueues,
 } from './queue-client';
 export { type QueueName, queueDefinitions, queueNames } from './queue-definitions';
+export { readDeclaredQueueNames } from './queue-inspection';
