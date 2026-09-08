@@ -17,11 +17,11 @@ contract most integrators already know from payment APIs.
 The claim is an `INSERT … ON CONFLICT DO NOTHING` against a fingerprint of the
 canonicalised request. Three outcomes:
 
-| Situation                              | Answer                                    |
-| -------------------------------------- | ----------------------------------------- |
-| Same key, same request, already done   | Replay, with `Idempotent-Replayed: true`  |
-| Same key, same request, still running  | 409 Conflict                              |
-| Same key, different request            | 422 Unprocessable Content                 |
+| Situation                             | Answer                                   |
+| ------------------------------------- | ---------------------------------------- |
+| Same key, same request, already done  | Replay, with `Idempotent-Replayed: true` |
+| Same key, same request, still running | 409 Conflict                             |
+| Same key, different request           | 422 Unprocessable Content                |
 
 Keys expire after twenty-four hours.
 

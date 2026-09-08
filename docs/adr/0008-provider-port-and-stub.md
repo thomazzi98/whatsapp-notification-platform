@@ -28,7 +28,7 @@ receipt — is exercisable with no phone and no browser engine.
   WhatsApp are excluded from it by design.
 - The stub must model the provider's awkwardness, not an idealised version of
   it. When real WhatsApp exposed that the send response and the delivery receipt
-  report *different* message identifiers, the stub was changed to reproduce that
+  report _different_ message identifiers, the stub was changed to reproduce that
   mismatch, so the class of bug now fails locally.
 - A stub that encodes the same wrong assumption as the adapter proves nothing.
   That is exactly what happened once, and it is why the real-WhatsApp check
@@ -39,4 +39,4 @@ receipt — is exercisable with no phone and no browser engine.
 **Recording real traffic and replaying it.** Rejected as the primary mechanism:
 fixtures cannot produce the failure modes — timeout, connection reset, session
 not ready — that most of the retry logic exists to handle. Real captured
-payloads are used as fixtures *in addition*, to keep the parsers honest.
+payloads are used as fixtures _in addition_, to keep the parsers honest.

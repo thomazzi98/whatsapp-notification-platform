@@ -147,13 +147,18 @@ export class NotificationQueryService {
     };
 
     const cursor = this.decodeCursor(query.cursor);
-    const page = await withTenantScope(this.connection.database, applicationId, async (transaction) =>
-      new NotificationRepository(transaction).list(
-        applicationId,
-        filters,
-        cursor === undefined ? undefined : { createdAt: new Date(cursor.createdAt), id: cursor.id },
-        query.limit,
-      ),
+    const page = await withTenantScope(
+      this.connection.database,
+      applicationId,
+      async (transaction) =>
+        new NotificationRepository(transaction).list(
+          applicationId,
+          filters,
+          cursor === undefined
+            ? undefined
+            : { createdAt: new Date(cursor.createdAt), id: cursor.id },
+          query.limit,
+        ),
     );
 
     return {

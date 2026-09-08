@@ -91,8 +91,7 @@ describe('a query that forgets to scope itself', () => {
     const visible = await withTenantScope(
       connection.database,
       firstApplicationId,
-      async (transaction) =>
-        transaction.execute<{ id: string }>(sql`select id from notifications`),
+      async (transaction) => transaction.execute<{ id: string }>(sql`select id from notifications`),
     );
 
     const identifiers = visible.rows.map((row) => row.id);
@@ -175,7 +174,9 @@ describe('the scope itself', () => {
     const afterwards = await connection.database.execute<{
       role: string;
       application: string | null;
-    }>(sql`select current_user as role, current_setting('app.current_application_id', true) as application`);
+    }>(
+      sql`select current_user as role, current_setting('app.current_application_id', true) as application`,
+    );
 
     expect(afterwards.rows[0]?.role).not.toBe('platform_tenant');
     // Postgres reverts a transaction-local setting to what it was before, and a

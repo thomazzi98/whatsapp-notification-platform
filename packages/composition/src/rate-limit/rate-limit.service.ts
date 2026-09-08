@@ -21,10 +21,28 @@ export interface RateLimitOutcome extends RateLimitDecision {
   readonly wasDegraded: boolean;
 }
 
-/** Requests a person may make against sign-in before being slowed down. */
+/** Sign-in attempts one address may make before being slowed down. */
 export const signInPolicy: RateLimitPolicy = {
   requestsPerPeriod: 10,
   burstAllowance: 5,
+  periodSeconds: 60,
+};
+
+/**
+ * Registration gets its own, far more generous allowance.
+ *
+ * It answers a different question. Sign-in is throttled because guessing a
+ * password is the attack; creating accounts is throttled only to bound
+ * automated sign-ups, and the control that actually decides whether strangers
+ * may register at all is SECURITY_REGISTRATION_ENABLED.
+ *
+ * Sharing sign-in's allowance would also mean a team onboarding together from
+ * one office address -- or a test suite behind one address -- locking itself
+ * out for doing something entirely legitimate.
+ */
+export const registrationPolicy: RateLimitPolicy = {
+  requestsPerPeriod: 60,
+  burstAllowance: 30,
   periodSeconds: 60,
 };
 

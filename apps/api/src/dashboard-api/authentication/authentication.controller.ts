@@ -29,7 +29,10 @@ import { type FastifyReply } from 'fastify';
 import { CurrentUser } from '../../http/authentication/authenticated-request';
 import { deriveCsrfToken } from '../../http/authentication/csrf';
 import { DashboardSessionGuard } from '../../http/authentication/dashboard-session.guard';
-import { SignInRateLimitGuard } from '../../http/rate-limit/sign-in-rate-limit.guard';
+import {
+  RegistrationRateLimitGuard,
+  SignInRateLimitGuard,
+} from '../../http/rate-limit/credential-rate-limit.guard';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
 
 /**
@@ -83,7 +86,7 @@ export class AuthenticationController {
   }
 
   @Post('register')
-  @UseGuards(SignInRateLimitGuard)
+  @UseGuards(RegistrationRateLimitGuard)
   @UsePipes(new ZodValidationPipe(registerRequestSchema))
   public async register(
     @Body() body: RegisterRequest,

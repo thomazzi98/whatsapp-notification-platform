@@ -19,7 +19,7 @@ An opaque 256-bit session token, stored hashed, in a cookie that is
 are hashed with Argon2id at OWASP's baseline parameters. State-changing
 dashboard requests carry a double-submit CSRF token.
 
-Rolling *session management* is a few hundred lines of well-understood code.
+Rolling _session management_ is a few hundred lines of well-understood code.
 Rolling cryptography or an identity protocol would not be, and neither is here:
 Argon2id comes from `@node-rs/argon2`, and token generation from `node:crypto`.
 

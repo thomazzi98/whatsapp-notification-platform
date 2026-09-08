@@ -89,7 +89,10 @@ describe('the published description of the API', () => {
 
   it('derives its request schema from the one that validates the request', () => {
     const components = document.components as unknown as {
-      schemas: Record<string, { properties: Record<string, unknown>; required: string[] } | undefined>;
+      schemas: Record<
+        string,
+        { properties: Record<string, unknown>; required: string[] } | undefined
+      >;
     };
     const creation = components.schemas.NotificationCreationRequest ?? {
       properties: {},

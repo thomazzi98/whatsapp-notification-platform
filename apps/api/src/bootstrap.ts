@@ -28,7 +28,13 @@ export async function bootstrapApi(configuration: ApplicationConfiguration): Pro
     // with a value that also survives the queue hop into the worker.
     // eslint-disable-next-line unicorn/name-replacements -- Fastify option name.
     genReqId: () => randomCorrelationId(),
-    trustProxy: true,
+    // Trust exactly one hop -- the process that opened the socket, which in
+    // this stack is always Caddy -- rather than trusting the whole
+    // X-Forwarded-For chain. Caddy already replaces a client-supplied header
+    // with the address it observed, so both settings behave the same here; this
+    // one states the assumption the API is entitled to make rather than
+    // inheriting a guarantee from whatever happens to sit in front of it.
+    trustProxy: (_address: string, hop: number) => hop === 0,
   });
 
   const application = await NestFactory.create<NestFastifyApplication>(

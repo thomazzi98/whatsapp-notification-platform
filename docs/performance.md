@@ -19,11 +19,11 @@ turns out to be the single most important fact about these numbers.
 The rate limiter was making every metered request wait for a write-ahead log
 flush.
 
-| Endpoint                       | Before   | After   |
-| ------------------------------ | -------- | ------- |
-| `GET /v1/applications/current`  | 35.7 ms  | 7.4 ms  |
-| `GET /v1/notifications`         | 74.6 ms  | 8.8 ms  |
-| `POST /v1/notifications`        | 256.0 ms | 116.8 ms |
+| Endpoint                       | Before   | After    |
+| ------------------------------ | -------- | -------- |
+| `GET /v1/applications/current` | 35.7 ms  | 7.4 ms   |
+| `GET /v1/notifications`        | 74.6 ms  | 8.8 ms   |
+| `POST /v1/notifications`       | 256.0 ms | 116.8 ms |
 
 All figures are p50 over forty sequential requests.
 
@@ -89,16 +89,16 @@ Limit (actual time=0.039..0.073 rows=25 loops=1)
 
 Twenty-five rows for five buffer hits, no sort, no heap scan.
 
-| Index                                              | Serves                                               | Shape                                                  |
-| -------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------ |
-| `notifications_application_created_at_index`        | The list endpoint and its keyset pagination           | `(application_id, created_at, id)`                      |
-| `notifications_application_status_created_at_index` | The same list filtered by status                      | `(application_id, status, created_at)`                  |
-| `notifications_application_recipient_index`         | "What did we send this person?"                       | `(application_id, recipient_phone_number, created_at)`  |
-| `notifications_provider_message_id_unique`          | Resolving an inbound receipt in one seek              | Partial unique on `(whatsapp_session_id, provider_message_id)` |
-| `notifications_due_scheduled_index`                 | The scheduler                                         | Partial: `status = 'SCHEDULED'`                         |
-| `notifications_due_retry_index`                     | The retry sweep                                       | Partial: `status = 'RETRYING'`                          |
-| `notifications_stuck_claims_index`                  | Reaping claims a crashed worker left behind           | Partial: `status = 'PROCESSING'`                        |
-| `notification_send_attempts_unresolved_index`       | Finding an attempt whose outcome is unknown           | Partial: `outcome IS NULL`                              |
+| Index                                               | Serves                                      | Shape                                                          |
+| --------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------- |
+| `notifications_application_created_at_index`        | The list endpoint and its keyset pagination | `(application_id, created_at, id)`                             |
+| `notifications_application_status_created_at_index` | The same list filtered by status            | `(application_id, status, created_at)`                         |
+| `notifications_application_recipient_index`         | "What did we send this person?"             | `(application_id, recipient_phone_number, created_at)`         |
+| `notifications_provider_message_id_unique`          | Resolving an inbound receipt in one seek    | Partial unique on `(whatsapp_session_id, provider_message_id)` |
+| `notifications_due_scheduled_index`                 | The scheduler                               | Partial: `status = 'SCHEDULED'`                                |
+| `notifications_due_retry_index`                     | The retry sweep                             | Partial: `status = 'RETRYING'`                                 |
+| `notifications_stuck_claims_index`                  | Reaping claims a crashed worker left behind | Partial: `status = 'PROCESSING'`                               |
+| `notification_send_attempts_unresolved_index`       | Finding an attempt whose outcome is unknown | Partial: `outcome IS NULL`                                     |
 
 The partial ones are the interesting group. Each covers only work that is
 actually pending, so in steady state they are nearly empty and the maintenance
@@ -132,8 +132,8 @@ operation while the provider takes seconds.
 
 ## The browser bundle
 
-| Asset      | Raw     | Gzipped |
-| ---------- | ------- | ------- |
+| Asset      | Raw      | Gzipped |
+| ---------- | -------- | ------- |
 | JavaScript | 309.9 kB | 93.4 kB |
 | CSS        | 14.8 kB  | 3.9 kB  |
 
@@ -148,13 +148,13 @@ state or a hidden tab.
 
 ## Images
 
-| Image        | Size    |
-| ------------ | ------- |
-| `api`        | 273 MB  |
-| `worker`     | 265 MB  |
-| `migrate`    | 257 MB  |
-| `waha-stub`  | 238 MB  |
-| `web`        | 60.5 MB |
+| Image       | Size    |
+| ----------- | ------- |
+| `api`       | 273 MB  |
+| `worker`    | 265 MB  |
+| `migrate`   | 257 MB  |
+| `waha-stub` | 238 MB  |
+| `web`       | 60.5 MB |
 
 The Node images share a base and a build cache, so the three of them do not cost
 three times 260 MB on disk. `pnpm deploy --prod` prunes development dependencies

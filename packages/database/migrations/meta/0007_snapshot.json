@@ -141,26 +141,18 @@
         "api_keys_application_id_applications_id_fk": {
           "name": "api_keys_application_id_applications_id_fk",
           "tableFrom": "api_keys",
-          "columnsFrom": [
-            "application_id"
-          ],
+          "columnsFrom": ["application_id"],
           "tableTo": "applications",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "api_keys_created_by_user_id_users_id_fk": {
           "name": "api_keys_created_by_user_id_users_id_fk",
           "tableFrom": "api_keys",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -314,13 +306,9 @@
         "applications_organization_id_organizations_id_fk": {
           "name": "applications_organization_id_organizations_id_fk",
           "tableFrom": "applications",
-          "columnsFrom": [
-            "organization_id"
-          ],
+          "columnsFrom": ["organization_id"],
           "tableTo": "organizations",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -505,13 +493,9 @@
         "idempotency_keys_application_id_applications_id_fk": {
           "name": "idempotency_keys_application_id_applications_id_fk",
           "tableFrom": "idempotency_keys",
-          "columnsFrom": [
-            "application_id"
-          ],
+          "columnsFrom": ["application_id"],
           "tableTo": "applications",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -652,15 +636,9 @@
         "notification_events_notification_fkey": {
           "name": "notification_events_notification_fkey",
           "tableFrom": "notification_events",
-          "columnsFrom": [
-            "application_id",
-            "notification_id"
-          ],
+          "columnsFrom": ["application_id", "notification_id"],
           "tableTo": "notifications",
-          "columnsTo": [
-            "application_id",
-            "id"
-          ],
+          "columnsTo": ["application_id", "id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -774,15 +752,9 @@
         "notification_send_attempts_notification_fkey": {
           "name": "notification_send_attempts_notification_fkey",
           "tableFrom": "notification_send_attempts",
-          "columnsFrom": [
-            "application_id",
-            "notification_id"
-          ],
+          "columnsFrom": ["application_id", "notification_id"],
           "tableTo": "notifications",
-          "columnsTo": [
-            "application_id",
-            "id"
-          ],
+          "columnsTo": ["application_id", "id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -847,26 +819,18 @@
         "notification_status_transitions_from_status_notification_statuses_status_fk": {
           "name": "notification_status_transitions_from_status_notification_statuses_status_fk",
           "tableFrom": "notification_status_transitions",
-          "columnsFrom": [
-            "from_status"
-          ],
+          "columnsFrom": ["from_status"],
           "tableTo": "notification_statuses",
-          "columnsTo": [
-            "status"
-          ],
+          "columnsTo": ["status"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "notification_status_transitions_to_status_notification_statuses_status_fk": {
           "name": "notification_status_transitions_to_status_notification_statuses_status_fk",
           "tableFrom": "notification_status_transitions",
-          "columnsFrom": [
-            "to_status"
-          ],
+          "columnsFrom": ["to_status"],
           "tableTo": "notification_statuses",
-          "columnsTo": [
-            "status"
-          ],
+          "columnsTo": ["status"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -874,10 +838,7 @@
       "compositePrimaryKeys": {
         "notification_status_transitions_from_status_to_status_pk": {
           "name": "notification_status_transitions_from_status_to_status_pk",
-          "columns": [
-            "from_status",
-            "to_status"
-          ]
+          "columns": ["from_status", "to_status"]
         }
       },
       "uniqueConstraints": {},
@@ -1268,69 +1229,45 @@
         "notifications_application_id_applications_id_fk": {
           "name": "notifications_application_id_applications_id_fk",
           "tableFrom": "notifications",
-          "columnsFrom": [
-            "application_id"
-          ],
+          "columnsFrom": ["application_id"],
           "tableTo": "applications",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "notifications_status_notification_statuses_status_fk": {
           "name": "notifications_status_notification_statuses_status_fk",
           "tableFrom": "notifications",
-          "columnsFrom": [
-            "status"
-          ],
+          "columnsFrom": ["status"],
           "tableTo": "notification_statuses",
-          "columnsTo": [
-            "status"
-          ],
+          "columnsTo": ["status"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "notifications_session_fkey": {
           "name": "notifications_session_fkey",
           "tableFrom": "notifications",
-          "columnsFrom": [
-            "application_id",
-            "whatsapp_session_id"
-          ],
+          "columnsFrom": ["application_id", "whatsapp_session_id"],
           "tableTo": "whatsapp_sessions",
-          "columnsTo": [
-            "application_id",
-            "id"
-          ],
+          "columnsTo": ["application_id", "id"],
           "onUpdate": "no action",
           "onDelete": "restrict"
         },
         "notifications_template_fkey": {
           "name": "notifications_template_fkey",
           "tableFrom": "notifications",
-          "columnsFrom": [
-            "application_id",
-            "template_id"
-          ],
+          "columnsFrom": ["application_id", "template_id"],
           "tableTo": "templates",
-          "columnsTo": [
-            "application_id",
-            "id"
-          ],
+          "columnsTo": ["application_id", "id"],
           "onUpdate": "no action",
           "onDelete": "restrict"
         },
         "notifications_retry_of_fkey": {
           "name": "notifications_retry_of_fkey",
           "tableFrom": "notifications",
-          "columnsFrom": [
-            "retry_of_notification_id"
-          ],
+          "columnsFrom": ["retry_of_notification_id"],
           "tableTo": "notifications",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -1339,10 +1276,7 @@
       "uniqueConstraints": {
         "notifications_application_id_unique": {
           "name": "notifications_application_id_unique",
-          "columns": [
-            "application_id",
-            "id"
-          ],
+          "columns": ["application_id", "id"],
           "nullsNotDistinct": false
         }
       },
@@ -1635,26 +1569,18 @@
         "templates_application_id_applications_id_fk": {
           "name": "templates_application_id_applications_id_fk",
           "tableFrom": "templates",
-          "columnsFrom": [
-            "application_id"
-          ],
+          "columnsFrom": ["application_id"],
           "tableTo": "applications",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "templates_created_by_user_id_users_id_fk": {
           "name": "templates_created_by_user_id_users_id_fk",
           "tableFrom": "templates",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -1663,10 +1589,7 @@
       "uniqueConstraints": {
         "templates_application_id_unique": {
           "name": "templates_application_id_unique",
-          "columns": [
-            "application_id",
-            "id"
-          ],
+          "columns": ["application_id", "id"],
           "nullsNotDistinct": false
         }
       },
@@ -1812,13 +1735,9 @@
         "user_sessions_user_id_users_id_fk": {
           "name": "user_sessions_user_id_users_id_fk",
           "tableFrom": "user_sessions",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1948,13 +1867,9 @@
         "users_organization_id_organizations_id_fk": {
           "name": "users_organization_id_organizations_id_fk",
           "tableFrom": "users",
-          "columnsFrom": [
-            "organization_id"
-          ],
+          "columnsFrom": ["organization_id"],
           "tableTo": "organizations",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2121,15 +2036,9 @@
         "webhook_deliveries_session_fkey": {
           "name": "webhook_deliveries_session_fkey",
           "tableFrom": "webhook_deliveries",
-          "columnsFrom": [
-            "application_id",
-            "whatsapp_session_id"
-          ],
+          "columnsFrom": ["application_id", "whatsapp_session_id"],
           "tableTo": "whatsapp_sessions",
-          "columnsTo": [
-            "application_id",
-            "id"
-          ],
+          "columnsTo": ["application_id", "id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2314,13 +2223,9 @@
         "whatsapp_sessions_application_id_applications_id_fk": {
           "name": "whatsapp_sessions_application_id_applications_id_fk",
           "tableFrom": "whatsapp_sessions",
-          "columnsFrom": [
-            "application_id"
-          ],
+          "columnsFrom": ["application_id"],
           "tableTo": "applications",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2329,10 +2234,7 @@
       "uniqueConstraints": {
         "whatsapp_sessions_application_id_unique": {
           "name": "whatsapp_sessions_application_id_unique",
-          "columns": [
-            "application_id",
-            "id"
-          ],
+          "columns": ["application_id", "id"],
           "nullsNotDistinct": false
         }
       },

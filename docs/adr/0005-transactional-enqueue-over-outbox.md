@@ -19,7 +19,7 @@ caller's Drizzle transaction. The claim on the idempotency key, the notification
 row, the first timeline event, the job, and the completion of the key all commit
 together or not at all.
 
-The queue table *is* the outbox. There is no relay because there is nothing to
+The queue table _is_ the outbox. There is no relay because there is nothing to
 relay.
 
 ## Consequences

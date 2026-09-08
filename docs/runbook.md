@@ -95,7 +95,7 @@ Check in this order, because each answer changes the next step.
 2. **Is the worker running?** `docker compose ps worker`. It has no HTTP port, so
    its health is its logs.
 3. **Are jobs being claimed?** `SELECT name, state, count(*) FROM pgboss.job
-   GROUP BY 1, 2;`. Jobs in `created` with a worker running means the worker
+GROUP BY 1, 2;`. Jobs in `created` with a worker running means the worker
    cannot reach the queue.
 4. **Is pacing holding them?** Sending is deliberately slow — one message every
    thirty to sixty seconds per connection. A backlog draining slowly is the
@@ -170,8 +170,8 @@ losing the notification history; the pairing survives.
 
 ## Rotating secrets
 
-| Secret                        | Effect of rotating                                              |
-| ----------------------------- | --------------------------------------------------------------- |
+| Secret                        | Effect of rotating                                               |
+| ----------------------------- | ---------------------------------------------------------------- |
 | `SECURITY_API_KEY_PEPPER`     | Invalidates **every** API key. Issue new ones.                   |
 | `SECURITY_ENCRYPTION_KEY`     | Makes stored webhook signing keys unreadable. Recreate sessions. |
 | `SECURITY_CURSOR_SIGNING_KEY` | Invalidates outstanding pagination cursors. Harmless.            |

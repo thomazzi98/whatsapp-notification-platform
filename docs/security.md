@@ -21,13 +21,13 @@ against the operator that no amount of retrying fixes.
 
 ## Two authentication surfaces, deliberately separate
 
-| Surface      | Credential                              | Used by            |
-| ------------ | --------------------------------------- | ------------------ |
-| `/v1`        | `Authorization: Bearer wnp_live_…`      | Integrating systems |
-| `/dashboard` | Session cookie plus a CSRF token         | People              |
-| `/webhooks`  | HMAC-SHA512 over the raw request bytes   | The provider        |
+| Surface      | Credential                             | Used by             |
+| ------------ | -------------------------------------- | ------------------- |
+| `/v1`        | `Authorization: Bearer wnp_live_…`     | Integrating systems |
+| `/dashboard` | Session cookie plus a CSRF token       | People              |
+| `/webhooks`  | HMAC-SHA512 over the raw request bytes | The provider        |
 
-Session *lifecycle* endpoints — start a connection, fetch a QR code — exist only
+Session _lifecycle_ endpoints — start a connection, fetch a QR code — exist only
 on the dashboard surface. Starting a WhatsApp session requires a human to scan a
 code, so exposing it to API keys would create a workflow that cannot complete.
 
@@ -48,8 +48,7 @@ Reasoning in [ADR 0010](adr/0010-api-key-format-and-hashing.md).
 An opaque 256-bit token, stored as a SHA-256 digest, in a cookie that is
 `HttpOnly`, `SameSite=Lax` and `Secure` outside local development. Passwords are
 Argon2id at OWASP's baseline parameters, and a malformed stored hash denies
-access rather than throwing, so a corrupt row cannot turn every sign-in into a
-500.
+access rather than throwing, so a corrupt row cannot turn every sign-in into a 500.
 
 Sessions have both a hard lifetime and a sliding idle timeout. The hard lifetime
 is never extended, so a stolen session expires on a schedule the attacker cannot
@@ -83,7 +82,7 @@ waiting to happen.
    transaction, and see only rows belonging to the application in scope. A
    forgotten `WHERE` clause returns nothing rather than another tenant's data.
    [ADR 0014](adr/0014-row-level-security-as-a-backstop.md) explains why the
-   settings are transaction-local and what is *not* covered.
+   settings are transaction-local and what is _not_ covered.
 
 An integration test proves the third with a deliberately unscoped `SELECT`, an
 `INSERT` aimed at another tenant, and an assertion that every table carrying a
@@ -146,14 +145,14 @@ a query nobody intended.
 The review ran `pnpm audit`, read the history for committed secrets, checked the
 browser bundle for leaked configuration, and worked through the surfaces above.
 
-| Finding                                                                                    | Action                                                                             |
-| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Three moderate Fastify advisories (`GHSA-w2qp-rph6-63g4`, `GHSA-3m5p-2c4r-xxw2`, and one further), all fixed in 5.12.1. `@nestjs/platform-fastify@11.2.3` pins 5.11.3 exactly and has no newer release. | Fixed. A workspace override lifts the whole tree to 5.12.3, keeping a single copy of Fastify in the process. |
-| `GHSA-67mh-4wv8-2f99` in esbuild, reached through drizzle-kit's legacy loader. Development only, and the affected code path is a dev server this project never runs. | Fixed rather than accepted: an advisory that is merely unreachable today is one nobody re-reads tomorrow. Overridden to `^0.25.12`. |
-| Tenant isolation relied entirely on application-level scoping. The README and a source comment already described row level security that did not exist. | Fixed. Policies, a non-login tenant role, `withTenantScope`, and an isolation test. |
-| `@nestjs/swagger` and `nestjs-zod` sat in the dependency catalog, used by nothing.           | Removed. Unused dependency declarations are attack surface that nobody audits.       |
-| No committed secrets in history; only `.env.example`, which holds placeholders.              | No action.                                                                          |
-| No configuration in the browser bundle.                                                      | No action. The single-origin design is what makes this structural rather than lucky. |
+| Finding                                                                                                                                                                                                 | Action                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Three moderate Fastify advisories (`GHSA-w2qp-rph6-63g4`, `GHSA-3m5p-2c4r-xxw2`, and one further), all fixed in 5.12.1. `@nestjs/platform-fastify@11.2.3` pins 5.11.3 exactly and has no newer release. | Fixed. A workspace override lifts the whole tree to 5.12.3, keeping a single copy of Fastify in the process.                        |
+| `GHSA-67mh-4wv8-2f99` in esbuild, reached through drizzle-kit's legacy loader. Development only, and the affected code path is a dev server this project never runs.                                    | Fixed rather than accepted: an advisory that is merely unreachable today is one nobody re-reads tomorrow. Overridden to `^0.25.12`. |
+| Tenant isolation relied entirely on application-level scoping. The README and a source comment already described row level security that did not exist.                                                 | Fixed. Policies, a non-login tenant role, `withTenantScope`, and an isolation test.                                                 |
+| `@nestjs/swagger` and `nestjs-zod` sat in the dependency catalog, used by nothing.                                                                                                                      | Removed. Unused dependency declarations are attack surface that nobody audits.                                                      |
+| No committed secrets in history; only `.env.example`, which holds placeholders.                                                                                                                         | No action.                                                                                                                          |
+| No configuration in the browser bundle.                                                                                                                                                                 | No action. The single-origin design is what makes this structural rather than lucky.                                                |
 
 ## What is out of scope, and why
 

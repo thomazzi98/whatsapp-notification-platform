@@ -54,13 +54,13 @@ delivered. Watch the rest happen on the notification's detail page.
 
 ## Documentation
 
-| Document                                | What is in it                                                      |
-| --------------------------------------- | ------------------------------------------------------------------ |
-| [Architecture](docs/architecture.md)    | What the parts are, how a notification travels, where the seams are |
-| [Decision records](docs/adr/README.md)  | Eighteen decisions, each with its alternatives and its cost         |
-| [Runbook](docs/runbook.md)              | Operating it: connecting a number, diagnosing, backups, rotation    |
-| [Security](docs/security.md)            | Threat model, controls, and what a review found and fixed           |
-| [Performance](docs/performance.md)      | Where the time goes, what the indexes are for, measured numbers     |
+| Document                               | What is in it                                                       |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| [Architecture](docs/architecture.md)   | What the parts are, how a notification travels, where the seams are |
+| [Decision records](docs/adr/README.md) | Eighteen decisions, each with its alternatives and its cost         |
+| [Runbook](docs/runbook.md)             | Operating it: connecting a number, diagnosing, backups, rotation    |
+| [Security](docs/security.md)           | Threat model, controls, and what a review found and fixed           |
+| [Performance](docs/performance.md)     | Where the time goes, what the indexes are for, measured numbers     |
 
 The API describes itself at `/v1/openapi.json`, generated from the same schemas
 that validate the requests.
@@ -219,7 +219,7 @@ is a bug waiting to be fixed.
 3. **A missing read receipt is not a failure.** Recipients can turn read receipts
    off, and the dashboard says so rather than showing an error.
 4. **Cancellation cannot recall a sent message.** That is why `PROCESSING →
-   CANCELLED` is an illegal transition and cancelling one answers 409.
+CANCELLED` is an illegal transition and cancelling one answers 409.
 5. **Changing the WAHA engine forces a QR re-scan.** `WAHA_NAMESPACE` defaults to
    the engine name, so the pairing is stored per engine.
 6. **Idempotency keys expire after twenty-four hours**, the same contract as

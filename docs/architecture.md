@@ -75,18 +75,18 @@ several processes try to migrate at once.
 
 ## Packages
 
-| Package                     | Depends on                    | Holds                                                                 |
-| --------------------------- | ----------------------------- | --------------------------------------------------------------------- |
-| `domain`                    | Zod only                      | State machine, retry policy, phone normalisation, ports, failure taxonomy |
-| `contracts`                 | `domain`                      | Request and response schemas shared by the API and the dashboard       |
-| `database`                  | `domain`, Drizzle             | Schema, migrations, repositories, the tenant scope                     |
-| `queue`                     | `domain`, pg-boss             | Queue names, transactional enqueue, bootstrap                          |
-| `provider-whatsapp`         | `domain`, undici              | The WAHA adapter, failure classification, webhook verification         |
-| `security`                  | `domain`, node:crypto, argon2 | Password hashing, API keys, session tokens, encryption, system ports   |
-| `configuration`             | Zod                           | The environment schema, and the refusal to boot without it             |
-| `observability`             | pino                          | Logger, correlation context, the event vocabulary                      |
-| `composition`               | all adapters, `@nestjs/*`     | Services and modules — the only thing the applications wire            |
-| `testing`                   | test tooling                  | Postgres harness, fixtures, shared test configuration                  |
+| Package             | Depends on                    | Holds                                                                     |
+| ------------------- | ----------------------------- | ------------------------------------------------------------------------- |
+| `domain`            | Zod only                      | State machine, retry policy, phone normalisation, ports, failure taxonomy |
+| `contracts`         | `domain`                      | Request and response schemas shared by the API and the dashboard          |
+| `database`          | `domain`, Drizzle             | Schema, migrations, repositories, the tenant scope                        |
+| `queue`             | `domain`, pg-boss             | Queue names, transactional enqueue, bootstrap                             |
+| `provider-whatsapp` | `domain`, undici              | The WAHA adapter, failure classification, webhook verification            |
+| `security`          | `domain`, node:crypto, argon2 | Password hashing, API keys, session tokens, encryption, system ports      |
+| `configuration`     | Zod                           | The environment schema, and the refusal to boot without it                |
+| `observability`     | pino                          | Logger, correlation context, the event vocabulary                         |
+| `composition`       | all adapters, `@nestjs/*`     | Services and modules — the only thing the applications wire               |
+| `testing`           | test tooling                  | Postgres harness, fixtures, shared test configuration                     |
 
 The direction of every arrow is enforced three ways: by what each package
 declares as a dependency, by a `dependency-cruiser` ruleset in continuous

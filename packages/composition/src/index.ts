@@ -51,6 +51,7 @@ export { RateLimitModule } from './rate-limit/rate-limit.module';
 export {
   type RateLimitOutcome,
   RateLimitService,
+  registrationPolicy,
   signInPolicy,
 } from './rate-limit/rate-limit.service';
 export { RuntimeModule } from './runtime/runtime.module';
