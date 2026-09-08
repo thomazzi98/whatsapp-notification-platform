@@ -1,3 +1,4 @@
+export { buildOpenApiDocument, type OpenApiDocumentOptions } from './openapi';
 export {
   type ApiKeyResponse,
   apiKeyResponseSchema,

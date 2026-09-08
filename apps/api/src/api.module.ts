@@ -21,6 +21,7 @@ import { DashboardNotificationsController } from './dashboard-api/notifications/
 import { HealthController } from './health/health.controller';
 import { CurrentApplicationController } from './public-api/applications/current-application.controller';
 import { NotificationsController } from './public-api/notifications/notifications.controller';
+import { OpenApiController } from './public-api/openapi.controller';
 import { WhatsAppSessionsController } from './dashboard-api/whatsapp-sessions/whatsapp-sessions.controller';
 import { WhatsAppWebhookController } from './public-api/webhooks/whatsapp-webhook.controller';
 
@@ -55,6 +56,7 @@ export class ApiModule {
         DashboardNotificationsController,
         CurrentApplicationController,
         NotificationsController,
+        OpenApiController,
         WhatsAppWebhookController,
       ],
     };
