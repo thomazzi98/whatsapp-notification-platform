@@ -9,6 +9,7 @@ import {
   isUnregisteredNumber,
   responseForFailureMode,
 } from './failure-modes';
+import { renderQrPlaceholderPng } from './qr-image';
 import { MAXIMUM_QR_ATTEMPTS, SessionStore, type StubSession } from './session-store';
 import { WebhookSender } from './webhook-sender';
 
@@ -207,7 +208,7 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       }
       return reply.send({
         mimetype: 'image/png',
-        data: Buffer.from(value).toString('base64'),
+        data: renderQrPlaceholderPng(value).toString('base64'),
       });
     },
   );

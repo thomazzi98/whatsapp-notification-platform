@@ -14,7 +14,16 @@ test.describe('connecting a WhatsApp account', () => {
     await page.getByRole('button', { name: 'Create and show the code' }).click();
 
     await expect(page.getByRole('heading', { name: 'Scan to connect' })).toBeVisible();
-    await expect(page.getByRole('img', { name: /QR code/ })).toBeVisible();
+
+    const code = page.getByRole('img', { name: /QR code/ });
+    await expect(code).toBeVisible();
+    // A broken image is still a visible img element. Asserting only that the
+    // element exists is how a provider stub returning the pairing string
+    // labelled as a PNG kept this test green while the screen showed alt text.
+    await expect
+      .poll(async () => code.evaluate((image: HTMLImageElement) => image.naturalWidth))
+      .toBeGreaterThan(0);
+
     // Never "Connected" before the provider says so.
     await expect(page.getByText('Paired with')).toBeHidden();
 

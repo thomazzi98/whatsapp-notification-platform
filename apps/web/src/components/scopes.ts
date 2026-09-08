@@ -18,7 +18,23 @@ const scopeDescriptions: Record<ApiKeyScope, string> = {
   'sessions:read': 'Read the state of the WhatsApp connections.',
 };
 
-export const availableScopes = Object.keys(scopeDescriptions) as ApiKeyScope[];
+/**
+ * Scopes no route checks yet.
+ *
+ * They stay in the vocabulary, so a key issued with one remains valid and the
+ * names do not have to be invented twice — but a checkbox that grants nothing
+ * is worse than an absent one. Templates have a table and no API; connection
+ * state is deliberately a dashboard concern, because pairing needs a person.
+ */
+const scopesWithoutAnEndpoint = new Set<ApiKeyScope>([
+  'templates:write',
+  'templates:read',
+  'sessions:read',
+]);
+
+export const availableScopes = (Object.keys(scopeDescriptions) as ApiKeyScope[]).filter(
+  (scope) => !scopesWithoutAnEndpoint.has(scope),
+);
 
 export function describeScope(scope: ApiKeyScope): string {
   return scopeDescriptions[scope];

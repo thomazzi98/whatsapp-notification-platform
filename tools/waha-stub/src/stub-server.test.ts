@@ -130,6 +130,29 @@ describe('QR codes', () => {
     expect(raw.body.value).toBeTypeOf('string');
   });
 
+  it('serves something a browser can actually draw', async () => {
+    await call({ method: 'POST', url: '/api/sessions', payload: { name: 'default', start: true } });
+
+    const image = await call({ method: 'GET', url: '/api/default/auth/qr' });
+    const decoded = Buffer.from(String(image.body.data), 'base64');
+
+    // Claiming image/png and returning the pairing string satisfies every
+    // assertion above and renders as a broken image in the dashboard.
+    expect([...decoded.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(decoded.subarray(12, 16).toString('ascii')).toBe('IHDR');
+    expect(decoded.readUInt32BE(16)).toBeGreaterThan(0);
+  });
+
+  it('draws a different code for a different session', async () => {
+    await call({ method: 'POST', url: '/api/sessions', payload: { name: 'default', start: true } });
+    await call({ method: 'POST', url: '/api/sessions', payload: { name: 'second', start: true } });
+
+    const first = await call({ method: 'GET', url: '/api/default/auth/qr' });
+    const second = await call({ method: 'GET', url: '/api/second/auth/qr' });
+
+    expect(first.body.data).not.toBe(second.body.data);
+  });
+
   it('refuses to serve a code when the session is not waiting for one', async () => {
     await createWorkingSession();
     const response = await call({ method: 'GET', url: '/api/default/auth/qr' });

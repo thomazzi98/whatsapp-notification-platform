@@ -15,6 +15,10 @@ allowBuilds:
   cpu-features: false
   protobufjs: false
   ssh2: false
+  # Its install script writes a service worker for intercepting requests in a
+  # real browser. The component tests intercept in Node, so the script has
+  # nothing to do here.
+  msw: false
 
 # Forced across the whole tree, transitive dependencies included.
 overrides:
@@ -85,6 +89,21 @@ catalog:
   tailwindcss: 4.3.3
   "@tailwindcss/vite": 4.3.3
 
+  # Component tests for the dashboard. jsdom rather than a real browser: these
+  # answer "does this component say the right thing in this state", which is a
+  # question a browser makes slower without making more truthful.
+  "@testing-library/react": 16.3.3
+  "@testing-library/user-event": 14.6.7
+  "@testing-library/jest-dom": 7.0.1
+  jsdom: 30.0.1
+  msw: 2.15.0
+  # Used directly rather than through a matcher package: the wrappers lag the
+  # test runner by a major version, and the assertion is four lines.
+  axe-core: 4.13.0
+
   # End to end. Driven against the production images, so the deployment path is
   # never the untested one.
   "@playwright/test": 1.63.0
+  # The same engine as the component tests use, in a real browser, where the
+  # rules that need layout and colour can actually run.
+  "@axe-core/playwright": 4.13.0

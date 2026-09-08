@@ -11,6 +11,7 @@
     "clean": "rimraf playwright-report test-results *.tsbuildinfo"
   },
   "devDependencies": {
+    "@axe-core/playwright": "catalog:",
     "@playwright/test": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",

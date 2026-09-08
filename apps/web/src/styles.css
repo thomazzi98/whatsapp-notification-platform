@@ -13,8 +13,11 @@
   --color-border-strong: oklch(84% 0.008 250);
 
   --color-ink: oklch(24% 0.015 250);
-  --color-ink-muted: oklch(52% 0.012 250);
-  --color-ink-subtle: oklch(64% 0.01 250);
+  /* Three steps, and the quietest of them still has to be readable: at 64% the
+     hint text under a field came out at 3.34:1 on white, which a scan caught.
+     The hierarchy is kept by moving the middle step down with it. */
+  --color-ink-muted: oklch(45% 0.012 250);
+  --color-ink-subtle: oklch(53% 0.01 250);
 
   --color-accent: oklch(52% 0.15 250);
   --color-accent-hover: oklch(46% 0.15 250);
@@ -22,7 +25,10 @@
 
   --color-positive: oklch(52% 0.13 155);
   --color-positive-subtle: oklch(96% 0.03 155);
-  --color-caution: oklch(58% 0.13 75);
+  /* Amber is the one hue that reads as bright at the lightness its neighbours
+     use, so it is set darker on purpose: at 58% it fell to 3.85:1 against its
+     own subtle background, which an accessibility scan caught. */
+  --color-caution: oklch(48% 0.12 75);
   --color-caution-subtle: oklch(96% 0.04 75);
   --color-negative: oklch(52% 0.17 25);
   --color-negative-subtle: oklch(96% 0.03 25);

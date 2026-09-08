@@ -168,14 +168,28 @@ the connection can see only that tenant's rows.
 
 ```bash
 corepack pnpm build
-corepack pnpm test               # unit tests, no external services
+corepack pnpm test               # unit and component tests, no external services
 corepack pnpm test:integration   # starts Postgres via Testcontainers
 corepack pnpm test:e2e           # drives the running stack in a browser
 ```
 
+Four layers, each answering a question the one below it cannot.
+
+| Layer       | Tool                    | Answers                                                                    |
+| ----------- | ----------------------- | -------------------------------------------------------------------------- |
+| Unit        | Vitest                  | Do the rules hold — the state machine, backoff, phone parsing, ack merging |
+| Component   | Vitest, Testing Library | Does a screen say the right thing in this state, and is it labelled        |
+| Integration | Vitest, Testcontainers  | Does the database enforce what it is supposed to, under real concurrency   |
+| End to end  | Playwright              | Does the whole thing work in a browser, against the production images      |
+
 The end-to-end suite expects `docker compose up` to be running with
 `COMPOSE_PROFILES=stub`, and drives the production images rather than a
 development server — so the path that actually ships is never the untested one.
+
+Accessibility is checked in both of the last two: axe runs over every rendered
+component in jsdom, and over each route in a real browser, where the rules that
+need layout and colour can actually run. It has already earned its place —
+the first run found two colour pairs below the contrast threshold.
 
 Other tasks: `pnpm lint`, `pnpm typecheck`, `pnpm verify:layers`,
 `pnpm verify:packaging`, `pnpm format`.
