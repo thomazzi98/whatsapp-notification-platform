@@ -5,6 +5,7 @@ import {
   type ProviderQrCode,
   type ProviderResult,
   type ProviderSession,
+  normalizeProviderMessageId,
   type ResolvedRecipient,
   type SendTextMessageInput,
   type SentMessage,
@@ -43,14 +44,26 @@ const recipientResponseSchema = z.object({
 });
 
 /**
- * The provider returns a flat string identifier, not an object. Older
- * documentation and blog posts describe the object form; parsing strictly here
- * means a change back would fail loudly rather than storing "[object Object]"
- * as the message identifier.
+ * The shapes the send endpoint has actually been observed to return.
+ *
+ * The engine decides which one. NOWEB answers with a Baileys key object, older
+ * documentation and the WEBJS engine describe a flat or serialized identifier,
+ * and the platform has to read all of them — the alternative is a parser that
+ * rejects a message the provider already sent.
+ *
+ * Whichever arrives is reduced to the identifier the acknowledgements will use,
+ * because the send and the receipt do not otherwise agree on the string.
  */
-const sentMessageResponseSchema = z.object({
-  id: z.string(),
-});
+const messageIdentifier = z.string().min(1);
+const keyShape = z.object({ key: z.object({ id: messageIdentifier }) });
+const flatShape = z.object({ id: messageIdentifier });
+const serializedShape = z.object({ id: z.object({ _serialized: messageIdentifier }) });
+
+const sentMessageResponseSchema = z.union([
+  keyShape.transform((value) => value.key.id),
+  flatShape.transform((value) => value.id),
+  serializedShape.transform((value) => value.id._serialized),
+]);
 
 interface RequestOptions {
   readonly method: 'GET' | 'POST' | 'DELETE';
@@ -292,15 +305,17 @@ export class WahaProvider implements WhatsAppProviderPort {
 
     const parsed = sentMessageResponseSchema.safeParse(response.value);
     if (!parsed.success) {
+      // Accepted, and unreadable. The message was almost certainly sent, so
+      // this is an unknown outcome rather than a failure to retry blindly.
       return failed(
         createProviderFailure(
-          'provider_unknown_error',
-          'The provider accepted the message but returned an unrecognised identifier.',
+          'provider_response_unreadable',
+          'The provider accepted the message and answered in a shape this version cannot read.',
         ),
       );
     }
 
-    return succeeded({ providerMessageId: parsed.data.id });
+    return succeeded({ providerMessageId: normalizeProviderMessageId(parsed.data) });
   }
 
   public async isReachable(): Promise<boolean> {

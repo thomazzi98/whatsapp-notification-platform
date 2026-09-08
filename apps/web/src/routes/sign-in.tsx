@@ -1,5 +1,6 @@
 import { type FormEvent, type ReactNode, useState } from 'react';
 
+import { fieldError, isFieldLevel } from '../api/client';
 import { useLogin, useRegister } from '../api/queries';
 import { Alert, Button, Field, Panel, TextInput } from '../components/ui';
 
@@ -10,6 +11,7 @@ export function SignInPage(): ReactNode {
   const login = useLogin();
   const register = useRegister();
   const activeMutation = mode === 'sign-in' ? login : register;
+  const failure = activeMutation.error;
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -66,7 +68,7 @@ export function SignInPage(): ReactNode {
             </>
           )}
 
-          <Field label="Email">
+          <Field label="Email" error={fieldError(failure, 'email')}>
             {(fieldProps) => (
               <TextInput
                 {...fieldProps}
@@ -82,6 +84,7 @@ export function SignInPage(): ReactNode {
           <Field
             label="Password"
             hint={mode === 'create-account' ? 'At least 12 characters.' : undefined}
+            error={fieldError(failure, 'password')}
           >
             {(fieldProps) => (
               <TextInput
@@ -89,12 +92,13 @@ export function SignInPage(): ReactNode {
                 name="password"
                 type="password"
                 required
+                minLength={mode === 'create-account' ? 12 : undefined}
                 autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
               />
             )}
           </Field>
 
-          {activeMutation.isError && (
+          {activeMutation.isError && !isFieldLevel(failure) && (
             <Alert title="That did not work">{activeMutation.error.message}</Alert>
           )}
 

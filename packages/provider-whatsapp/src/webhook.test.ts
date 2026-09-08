@@ -148,6 +148,17 @@ describe('toProviderEvent', () => {
     });
   });
 
+  it('reduces a serialized acknowledgement to the identifier the send stored', () => {
+    // The engine addresses the acknowledgement by the account's linked device
+    // and the send by the phone number, so the serialized strings differ. Only
+    // the final segment matches, and matching is the whole point.
+    const result = toProviderEvent(
+      envelopeFor('message.ack', { id: 'true_165515288932355@lid_3EB055173A81C4963B7466', ack: 3 }),
+    );
+
+    expect(result).toMatchObject({ providerMessageId: '3EB055173A81C4963B7466' });
+  });
+
   it('marks an inbound message so it is not matched against a notification', () => {
     const result = toProviderEvent(
       envelopeFor('message.ack', { id: 'message-1', ack: 2, fromMe: false }),

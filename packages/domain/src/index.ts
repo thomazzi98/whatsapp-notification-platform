@@ -43,6 +43,7 @@ export {
   sessionNotReadyMinimumDelaySeconds,
 } from './notification/retry-policy';
 export { type ProviderEvent, toDeliveryAcknowledgement } from './provider/provider-event';
+export { normalizeProviderMessageId } from './provider/provider-message-id';
 export {
   canSessionSend,
   type CreateSessionInput,

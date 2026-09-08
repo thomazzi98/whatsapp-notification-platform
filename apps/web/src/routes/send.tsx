@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useState } from 'react';
+import { fieldError, isFieldLevel } from '../api/client';
 import { useNavigate, useParams } from 'react-router';
 
 import { useConnections, useSendNotification } from '../api/queries';
@@ -31,6 +32,7 @@ export function SendPage(): ReactNode {
   const navigate = useNavigate();
   const connections = useConnections(applicationId);
   const send = useSendNotification(applicationId);
+  const failure = send.error;
   const [recipient, setRecipient] = useState('');
   const [body, setBody] = useState('');
 
@@ -62,6 +64,7 @@ export function SendPage(): ReactNode {
       <Panel title="Send a notification" description="The same endpoint an application would call.">
         <form className="flex flex-col gap-4 px-4 py-4" onSubmit={submit}>
           <Field
+            error={fieldError(failure, 'recipient')}
             label="Recipient"
             hint="International format, including the country code. A national number cannot be guessed at safely."
           >
@@ -78,7 +81,7 @@ export function SendPage(): ReactNode {
             )}
           </Field>
 
-          <Field label="Message">
+          <Field label="Message" error={fieldError(failure, 'body')}>
             {(fieldProps) => (
               <TextArea
                 {...fieldProps}
@@ -92,7 +95,9 @@ export function SendPage(): ReactNode {
             )}
           </Field>
 
-          {send.isError && <Alert title="Not accepted">{send.error.message}</Alert>}
+          {send.isError && !isFieldLevel(failure) && (
+            <Alert title="Not accepted">{send.error.message}</Alert>
+          )}
 
           <div>
             <Button type="submit" variant="primary" isBusy={send.isPending}>

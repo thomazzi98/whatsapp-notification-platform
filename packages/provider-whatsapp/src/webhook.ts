@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import {
+  normalizeProviderMessageId,
   type ProviderEvent,
   toDeliveryAcknowledgement,
   toProviderSessionStatus,
@@ -79,7 +80,10 @@ export function toProviderEvent(envelope: WebhookEnvelope): ProviderEvent {
 
     return {
       kind: 'message_acknowledgement',
-      providerMessageId: payload.data.id,
+      // Reduced to the same form the send was stored as. The acknowledgement
+      // names the account's linked-device identifier where the send named the
+      // phone number, so the serialized strings never match.
+      providerMessageId: normalizeProviderMessageId(payload.data.id),
       acknowledgement,
       // Absent means outbound: the provider only omits the flag on the engine
       // builds where every acknowledgement concerns a message we sent.

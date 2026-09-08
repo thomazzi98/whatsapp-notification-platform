@@ -27,6 +27,36 @@ export class ApiError extends Error {
   public get isUnauthenticated(): boolean {
     return this.status === 401;
   }
+
+  /**
+   * What the API said about a specific field.
+   *
+   * A validation failure's `detail` says only that the body did not match the
+   * schema, which is true and useless. The reason a person can act on is in
+   * `errors`, and a form that ignores it sends them to the network tab.
+   */
+  public messageFor(field: string): string | undefined {
+    return this.problem?.errors?.find((entry) => entry.path === field)?.message;
+  }
+
+  /** True when the failure is about the request rather than about the platform. */
+  public get isValidationFailure(): boolean {
+    return (this.problem?.errors?.length ?? 0) > 0;
+  }
+}
+
+/** Reads field errors off anything a mutation may have thrown. */
+export function fieldError(error: unknown, field: string): string | undefined {
+  return error instanceof ApiError ? error.messageFor(field) : undefined;
+}
+
+/**
+ * True when the failure is already explained on the fields it concerns, so the
+ * form can leave out a summary that would only repeat "the request body did not
+ * match the expected schema".
+ */
+export function isFieldLevel(error: unknown): boolean {
+  return error instanceof ApiError && error.isValidationFailure;
 }
 
 const CSRF_HEADER = 'x-csrf-token';

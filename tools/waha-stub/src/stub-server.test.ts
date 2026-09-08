@@ -154,7 +154,7 @@ describe('QR codes', () => {
 });
 
 describe('sending messages', () => {
-  it('returns a flat string identifier, as the real provider does', async () => {
+  it('answers with a key object, as the NOWEB engine does', async () => {
     await createWorkingSession();
 
     const sent = await call({
@@ -162,10 +162,58 @@ describe('sending messages', () => {
       url: '/api/sendText',
       payload: { session: 'default', chatId: '5511999998888@c.us', text: 'Hello' },
     });
+    const key = sent.body.key as { id?: string; fromMe?: boolean };
 
     expect(sent.statusCode).toBe(200);
-    expect(sent.body.id).toBeTypeOf('string');
-    expect(String(sent.body.id).startsWith('true_')).toBe(true);
+    expect(key.id).toBeTypeOf('string');
+    // No serialized identifier anywhere in the response: the send carries the
+    // raw one, and only the acknowledgement serializes it.
+    expect(JSON.stringify(sent.body)).not.toContain('true_');
+  });
+
+  it('acknowledges by the linked device, not by the number it sent to', async () => {
+    // A webhook has to be configured for a delivery to be recorded at all; the
+    // receiver is unreachable on purpose, and a failed delivery is still an
+    // envelope this test can read.
+    await call({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: {
+        name: 'default',
+        start: true,
+        config: {
+          webhooks: [{ url: 'http://receiver.invalid/webhooks', events: ['message.ack'] }],
+        },
+      },
+    });
+    await call({ method: 'POST', url: '/__stub/sessions/default/scan', payload: {} });
+    const sent = await call({
+      method: 'POST',
+      url: '/api/sendText',
+      payload: { session: 'default', chatId: '5511999998888@c.us', text: 'Hello' },
+    });
+    const messageIdentifier = (sent.body.key as { id: string }).id;
+
+    await call({
+      method: 'POST',
+      url: '/__stub/sessions/default/acknowledge',
+      payload: { messageId: messageIdentifier, ack: 2 },
+    });
+
+    // The addresses differ between the send and the receipt, exactly as they do
+    // against a real account. Anything comparing the serialized strings would
+    // pass against a stub that used one address for both, and fail in
+    // production.
+    const delivered = await call({ method: 'GET', url: '/__stub/webhooks' });
+    const deliveries = delivered.body.deliveries as {
+      envelope: { event: string; payload: { id: string } };
+    }[];
+    const acknowledgement = deliveries.find((entry) => entry.envelope.event === 'message.ack');
+
+    expect(acknowledgement?.envelope.payload.id).toBe(
+      `true_165515288932355@lid_${messageIdentifier}`,
+    );
+    expect(acknowledgement?.envelope.payload.id).not.toContain('5511999998888');
   });
 
   it('refuses to send while the session is not connected', async () => {

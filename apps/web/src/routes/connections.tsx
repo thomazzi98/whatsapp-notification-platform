@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 
+import { fieldError, isFieldLevel } from '../api/client';
 import { useConnections, useCreateConnection } from '../api/queries';
 import { ConnectionStatusBadge, describeConnectionStatus } from '../components/status';
 import { Alert, Button, EmptyState, Field, Loading, Panel, TextInput } from '../components/ui';
@@ -10,6 +11,7 @@ export function ConnectionsPage(): ReactNode {
   const navigate = useNavigate();
   const connections = useConnections(applicationId);
   const connectionCreation = useCreateConnection(applicationId);
+  const failure = connectionCreation.error;
   const [displayName, setDisplayName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -47,6 +49,7 @@ export function ConnectionsPage(): ReactNode {
       {isCreating && (
         <form className="flex flex-col gap-4 border-b border-border px-4 py-4" onSubmit={submit}>
           <Field
+            error={fieldError(failure, 'displayName')}
             label="Name"
             hint="For you, not for WhatsApp. Something like “Support line” or “Order updates”."
           >
@@ -66,7 +69,7 @@ export function ConnectionsPage(): ReactNode {
             This is an unofficial WhatsApp integration. The number can be banned at any time, so do
             not pair a personal account.
           </Alert>
-          {connectionCreation.isError && (
+          {connectionCreation.isError && !isFieldLevel(failure) && (
             <Alert title="Could not create the connection">
               {connectionCreation.error.message}
             </Alert>

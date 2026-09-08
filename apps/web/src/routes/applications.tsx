@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { Link } from 'react-router';
 
+import { fieldError, isFieldLevel } from '../api/client';
 import { useApplications, useCreateApplication, useLogout, useSession } from '../api/queries';
 import { Alert, Button, EmptyState, Field, Loading, Panel, TextInput } from '../components/ui';
 
@@ -17,6 +18,7 @@ export function ApplicationsPage(): ReactNode {
   const session = useSession();
   const applications = useApplications();
   const applicationCreation = useCreateApplication();
+  const failure = applicationCreation.error;
   const logout = useLogout();
   const [isCreating, setIsCreating] = useState(false);
   const [name, setName] = useState('');
@@ -72,7 +74,7 @@ export function ApplicationsPage(): ReactNode {
       >
         {isCreating && (
           <form className="flex flex-col gap-4 border-b border-border px-4 py-4" onSubmit={submit}>
-            <Field label="Name">
+            <Field label="Name" error={fieldError(failure, 'name')}>
               {(fieldProps) => (
                 <TextInput
                   {...fieldProps}
@@ -86,6 +88,7 @@ export function ApplicationsPage(): ReactNode {
               )}
             </Field>
             <Field
+              error={fieldError(failure, 'slug')}
               label="Slug"
               hint="Lower case letters, digits and hyphens. Used in URLs and cannot be changed later."
             >
@@ -100,7 +103,7 @@ export function ApplicationsPage(): ReactNode {
                 />
               )}
             </Field>
-            {applicationCreation.isError && (
+            {applicationCreation.isError && !isFieldLevel(failure) && (
               <Alert title="Could not create it">{applicationCreation.error.message}</Alert>
             )}
             <div>

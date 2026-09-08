@@ -50,12 +50,18 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      # These two catch failures that only appear at runtime: a layering
-      # violation compiles, and a package whose manifest points at a file the
-      # build never emitted passes every test that resolves through TypeScript.
       - name: Verify layering
         run: pnpm verify:layers
 
+      # Lint and typecheck build dependencies, not applications, so the
+      # deployable packages have emitted nothing yet — and the check below is
+      # about what a build actually produced.
+      - name: Build
+        run: pnpm build
+
+      # Catches the failure that only appears at runtime: a package whose
+      # manifest points at a file the build never emitted passes every test
+      # that resolves through TypeScript, and then fails inside a container.
       - name: Verify packaging
         run: pnpm verify:packaging
 

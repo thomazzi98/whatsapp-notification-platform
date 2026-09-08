@@ -34,7 +34,16 @@ interface SendTextBody {
   readonly text?: string;
 }
 
-const SENT_MESSAGE_PREFIX = 'true_';
+/**
+ * The account's linked-device identifier, which is what acknowledgements name.
+ *
+ * The real engine reports a different address on the send than on the receipt —
+ * the send names the phone number and the acknowledgement names this — so the
+ * stub models that difference deliberately. A stub that used one address for
+ * both would let a platform that compares the serialized strings pass here and
+ * fail against WhatsApp.
+ */
+const LINKED_DEVICE_IDENTIFIER = '165515288932355@lid';
 
 function toSessionResponse(session: StubSession): Record<string, unknown> {
   return {
@@ -53,8 +62,9 @@ function toSessionResponse(session: StubSession): Record<string, unknown> {
  * It exists so every milestone before the real WhatsApp step can be verified
  * without a phone, a scannable QR code or an account that can be banned. It
  * models the parts of the real contract the platform depends on — the session
- * lifecycle, the six-code QR budget, the flat string message identifier, and
- * acknowledgements that arrive out of order — and adds a control plane for
+ * lifecycle, the six-code QR budget, the message identifier the send and the
+ * acknowledgement disagree about, and acknowledgements that arrive out of
+ * order — and adds a control plane for
  * provoking failures on demand.
  */
 export function createStubServer(options: StubServerOptions): FastifyInstance {
@@ -250,18 +260,20 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
     }
 
     sentMessageCounter += 1;
-    const messageIdentifier = `${SENT_MESSAGE_PREFIX}${chatIdentifier}_STUB${String(sentMessageCounter).padStart(6, '0')}`;
+    const messageIdentifier = `STUB${String(sentMessageCounter).padStart(6, '0')}`;
+    const sentAtSeconds = Math.floor(Date.now() / 1000);
 
+    // The NOWEB engine's shape: a Baileys key carrying the raw identifier,
+    // with no serialized form anywhere in the response.
     return reply.send({
-      id: messageIdentifier,
-      timestamp: Math.floor(Date.now() / 1000),
-      from: `${session.phoneNumber ?? ''}@c.us`,
-      to: chatIdentifier,
-      fromMe: true,
-      body: body.text ?? '',
-      hasMedia: false,
-      ack: 1,
-      ackName: 'SERVER',
+      key: {
+        remoteJid: chatIdentifier.replace('@c.us', '@s.whatsapp.net'),
+        fromMe: true,
+        id: messageIdentifier,
+      },
+      message: { extendedTextMessage: { text: body.text ?? '' } },
+      messageTimestamp: String(sentAtSeconds),
+      status: 'PENDING',
     });
   });
 
@@ -359,9 +371,10 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
         session.name,
         'message.ack',
         {
-          id: messageIdentifier,
-          from: `${session.phoneNumber ?? ''}@c.us`,
-          to: messageIdentifier.split('_', 2)[1] ?? '',
+          // Serialized, and addressed by the linked device rather than by the
+          // number the send named — exactly as the real engine reports it.
+          id: `true_${LINKED_DEVICE_IDENTIFIER}_${messageIdentifier}`,
+          from: LINKED_DEVICE_IDENTIFIER,
           fromMe: true,
           ack: acknowledgement,
           ackName: ['ERROR', 'PENDING', 'SERVER', 'DEVICE', 'READ', 'PLAYED'][acknowledgement + 1],

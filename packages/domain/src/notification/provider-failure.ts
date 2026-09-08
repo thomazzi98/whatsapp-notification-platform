@@ -12,6 +12,7 @@ export const providerFailureCodes = [
   'provider_unauthorized',
   'provider_invalid_request',
   'provider_unknown_error',
+  'provider_response_unreadable',
   'session_missing',
   'session_not_ready',
   'session_unavailable',
@@ -55,6 +56,7 @@ const classificationByCode: Record<ProviderFailureCode, FailureClassification> =
   provider_rate_limited: 'RETRYABLE',
   provider_server_error: 'RETRYABLE',
   provider_unknown_error: 'RETRYABLE',
+  provider_response_unreadable: 'RETRYABLE',
   provider_outcome_unknown: 'RETRYABLE',
   session_not_ready: 'RETRYABLE',
   recipient_check_failed: 'RETRYABLE',
@@ -85,6 +87,11 @@ const unknownOutcomeCodes: ReadonlySet<ProviderFailureCode> = new Set([
   'provider_timeout',
   'provider_aborted',
   'provider_outcome_unknown',
+  // The provider accepted the message and answered in a shape this version
+  // cannot read. The message was almost certainly sent, so treating it as a
+  // clean failure would resend it — which is how a person receives the same
+  // notification twice because of a parser.
+  'provider_response_unreadable',
 ]);
 
 export function classifyFailureCode(code: ProviderFailureCode): FailureClassification {
