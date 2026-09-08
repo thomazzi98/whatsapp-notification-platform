@@ -112,10 +112,23 @@ own policies.
 corepack pnpm build
 corepack pnpm test               # unit tests, no external services
 corepack pnpm test:integration   # starts Postgres via Testcontainers
+corepack pnpm test:e2e           # drives the running stack in a browser
 ```
+
+The end-to-end suite expects `docker compose up` to be running with
+`COMPOSE_PROFILES=stub`, and drives the production images rather than a development
+server — so the path that actually ships is never the untested one.
 
 Other tasks: `pnpm lint`, `pnpm typecheck`, `pnpm verify:layers`, `pnpm verify:packaging`,
 `pnpm format`.
+
+```bash
+docker compose up --watch
+```
+
+rebuilds and restarts a service when its sources change. It rebuilds rather than syncing files:
+this project targets Docker Desktop on Windows, where bind mounts go through 9p and inotify events
+do not propagate, so a file-watching reloader there is silently dead rather than merely slow.
 
 ## Code style
 

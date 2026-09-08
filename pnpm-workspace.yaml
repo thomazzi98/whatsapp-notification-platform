@@ -73,3 +73,7 @@ catalog:
   # is the legacy one.
   tailwindcss: 4.3.3
   "@tailwindcss/vite": 4.3.3
+
+  # End to end. Driven against the production images, so the deployment path is
+  # never the untested one.
+  "@playwright/test": 1.63.0

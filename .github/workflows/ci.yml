@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer irrelevant, and
+# the free tier is a shared resource.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Turborepo prints a progress bar to a TTY it does not have here.
+  TURBO_TELEMETRY_DISABLED: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  verify:
+    name: Lint, types and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node and pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          # Reads the version from packageManager, so the toolchain cannot
+          # drift between a developer's machine and this runner.
+          package-manager-cache: false
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      # These two catch failures that only appear at runtime: a layering
+      # violation compiles, and a package whose manifest points at a file the
+      # build never emitted passes every test that resolves through TypeScript.
+      - name: Verify layering
+        run: pnpm verify:layers
+
+      - name: Verify packaging
+        run: pnpm verify:packaging
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node and pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Testcontainers starts a real Postgres against the runner's Docker
+      # daemon. The suites use one container each and truncate between tests,
+      # because a container per test file is what makes these unbearably slow.
+      - name: Integration tests
+        run: pnpm test:integration
+
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built here rather than only in the end-to-end job, so a broken
+      # Dockerfile is reported as a build failure instead of as a mysterious
+      # container that will not start.
+      - name: Build every image
+        uses: docker/bake-action@v6
+        with:
+          files: docker-compose.yml
+          targets: api,worker,web,migrate,waha-stub
+          load: false
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+
+  end-to-end:
+    name: End to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node and pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # A real .env with generated secrets, exactly as a developer would have.
+      # The stub profile stands in for WhatsApp: the real provider needs a phone
+      # and an account that can be banned, neither of which belongs in CI.
+      - name: Prepare the environment
+        run: |
+          pnpm setup:env
+          sed -i 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=stub/' .env
+
+      - name: Start the stack
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Install the browser
+        run: pnpm --filter @platform/end-to-end exec playwright install --with-deps chromium
+
+      - name: Run the end-to-end suite
+        run: pnpm test:e2e
+
+      - name: Collect the logs of a failed run
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: end-to-end-report
+          path: |
+            apps/end-to-end/playwright-report
+            apps/end-to-end/test-results
+          retention-days: 7
+
+  # The single job branch protection points at. Without it, adding a job to this
+  # workflow would silently stop being required.
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    needs: [verify, integration, images, end-to-end]
+    if: always()
+    steps:
+      - name: Fail unless every job succeeded
+        run: |
+          echo "verify:      ${{ needs.verify.result }}"
+          echo "integration: ${{ needs.integration.result }}"
+          echo "images:      ${{ needs.images.result }}"
+          echo "end-to-end:  ${{ needs.end-to-end.result }}"
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            exit 1
+          fi

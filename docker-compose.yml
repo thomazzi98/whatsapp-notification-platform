@@ -76,6 +76,21 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # `docker compose up --watch` rebuilds and restarts on a source change.
+    # File-event watching is deliberately not used: this project targets Docker
+    # Desktop on Windows, where bind mounts go through 9p and inotify events do
+    # not propagate — a watcher there is silently dead rather than merely slow.
+    develop:
+      watch:
+        - action: rebuild
+          path: ./apps/api/src
+        - action: rebuild
+          path: ./packages
+          ignore:
+            - "**/dist/**"
+            - "**/node_modules/**"
+        - action: rebuild
+          path: ./pnpm-lock.yaml
     healthcheck:
       # The runtime image is deliberately slim and has no curl; Node's own
       # fetch avoids adding a package just to answer a health probe.
@@ -106,6 +121,14 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./apps/web/src
+        - action: rebuild
+          path: ./apps/web/index.html
+        - action: rebuild
+          path: ./packages/contracts/src
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/index.html"]
       interval: 10s
@@ -139,6 +162,17 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    develop:
+      watch:
+        - action: rebuild
+          path: ./apps/worker/src
+        - action: rebuild
+          path: ./packages
+          ignore:
+            - "**/dist/**"
+            - "**/node_modules/**"
+        - action: rebuild
+          path: ./pnpm-lock.yaml
 
   # The real WhatsApp provider. Exactly one of this and waha-stub runs, chosen by
   # COMPOSE_PROFILES in .env, because both answer to the hostname `waha`.

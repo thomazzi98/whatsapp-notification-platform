@@ -1,0 +1,19 @@
+{
+  "name": "@platform/end-to-end",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser tests that drive the running stack the way a person would.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test:e2e": "playwright test",
+    "clean": "rimraf playwright-report test-results *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:"
+  }
+}

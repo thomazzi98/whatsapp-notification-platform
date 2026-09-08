@@ -16,6 +16,7 @@
     "lint:fix": "turbo run lint -- --fix",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
+    "test:e2e": "pnpm --filter @platform/end-to-end run test:e2e",
     "verify:layers": "depcruise --config .dependency-cruiser.cjs packages apps tools",
     "verify:packaging": "node tools/scripts/verify-packaging.mjs",
     "format": "prettier --write .",

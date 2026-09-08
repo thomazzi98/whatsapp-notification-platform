@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  },
+  "include": ["tests/**/*.ts", "playwright.config.ts", "eslint.config.mjs"]
+}
