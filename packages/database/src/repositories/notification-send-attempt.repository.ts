@@ -1,6 +1,5 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
-import { type Database } from '../connection';
 import { notificationSendAttempts } from '../schema';
 import { type QueryExecutor } from './notification.repository';
 
@@ -48,9 +47,9 @@ export interface ResolveSendAttemptInput {
  * with a send in flight, and whether WhatsApp acted on it is unknowable.
  */
 export class NotificationSendAttemptRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

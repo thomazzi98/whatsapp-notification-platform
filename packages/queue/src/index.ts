@@ -7,5 +7,10 @@ export {
   type WebhookProcessPayload,
   webhookProcessPayloadSchema,
 } from './job-payloads';
-export { createQueueClient, type QueueClientOptions, provisionQueues } from './queue-client';
+export {
+  bootstrapQueues,
+  createQueueClient,
+  type QueueClientOptions,
+  provisionQueues,
+} from './queue-client';
 export { type QueueName, queueDefinitions, queueNames } from './queue-definitions';

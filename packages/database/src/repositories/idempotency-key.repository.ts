@@ -1,6 +1,5 @@
 import { and, eq, lt, sql } from 'drizzle-orm';
 
-import { type Database } from '../connection';
 import { idempotencyKeys } from '../schema';
 import { type QueryExecutor } from './notification.repository';
 
@@ -32,9 +31,9 @@ export type IdempotencyClaim =
   | { readonly outcome: 'exists'; readonly record: IdempotencyRecord };
 
 export class IdempotencyKeyRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

@@ -53,13 +53,13 @@ export const environmentSchema = z.object({
 
   DATABASE_APPLICATION_URL: z.string().startsWith('postgres').meta({
     description:
-      'Connection string for the tenant-scoped role. This role is subject to row level security.',
+      'Connection string for the runtime role. It assumes a restricted role, subject to row level security, for the duration of each API-key request.',
     example:
       'postgres://platform_application:platform_application_password@localhost:55432/notifications',
   }),
   DATABASE_SYSTEM_URL: z.string().startsWith('postgres').meta({
     description:
-      'Connection string for the migration and maintenance role, which bypasses row level security.',
+      'Connection string for the role that owns the schema and applies migrations. As the owner it is exempt from the row level security policies.',
     example: 'postgres://platform_system:platform_system_password@localhost:55432/notifications',
   }),
   DATABASE_MAX_POOL_SIZE: positiveInteger

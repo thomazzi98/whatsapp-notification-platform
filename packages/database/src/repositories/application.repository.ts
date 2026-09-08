@@ -1,7 +1,7 @@
 import { type ApplicationStatus } from '@platform/domain';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 
-import { type Database } from '../connection';
+import { type QueryExecutor } from './notification.repository';
 import { applications } from '../schema';
 
 export interface ApplicationRecord {
@@ -43,9 +43,9 @@ export interface UpdateApplicationInput {
  * be written deliberately.
  */
 export class ApplicationRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

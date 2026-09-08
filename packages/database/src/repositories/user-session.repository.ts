@@ -1,7 +1,7 @@
 import { type UserRole } from '@platform/domain';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
-import { type Database } from '../connection';
+import { type QueryExecutor } from './notification.repository';
 import { organizations, userSessions, users } from '../schema';
 
 export interface SessionWithUser {
@@ -19,9 +19,9 @@ export interface SessionWithUser {
 }
 
 export class UserSessionRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

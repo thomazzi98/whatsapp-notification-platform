@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 
-import { type Database } from '../connection';
+import { type QueryExecutor } from './notification.repository';
 
 export interface RateLimitDecision {
   readonly isAllowed: boolean;
@@ -23,9 +23,9 @@ interface RateLimitRow extends Record<string, unknown> {
 }
 
 export class RateLimitRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

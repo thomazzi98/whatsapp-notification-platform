@@ -7,6 +7,7 @@ import {
   NotificationRepository,
   type QueryExecutor,
   WhatsAppSessionRepository,
+  withTenantScope,
 } from '@platform/database';
 import {
   CLOCK_PORT,
@@ -68,9 +69,6 @@ function fingerprintRequest(input: CreateNotificationInput): Buffer {
 @Injectable()
 export class CreateNotificationService {
   private readonly connection: DatabaseConnection;
-  private readonly notifications: NotificationRepository;
-  private readonly idempotencyKeys: IdempotencyKeyRepository;
-  private readonly whatsAppSessions: WhatsAppSessionRepository;
   private readonly clock: ClockPort;
   private readonly identifiers: IdentifierGeneratorPort;
   private readonly queue: PgBoss;
@@ -82,19 +80,30 @@ export class CreateNotificationService {
     @Inject(QUEUE_CLIENT) queue: PgBoss,
   ) {
     this.connection = connection;
-    this.notifications = new NotificationRepository(connection.database);
-    this.idempotencyKeys = new IdempotencyKeyRepository(connection.database);
-    this.whatsAppSessions = new WhatsAppSessionRepository(connection.database);
     this.clock = clock;
     this.identifiers = identifiers;
     this.queue = queue;
   }
 
+  private async readOrFail(
+    notifications: NotificationRepository,
+    applicationId: string,
+    notificationId: string,
+  ): Promise<NotificationRecord> {
+    const notification = await notifications.findById(applicationId, notificationId);
+
+    if (notification === undefined) {
+      throw new Error('The notification could not be read back after it was written.');
+    }
+    return notification;
+  }
+
   private async resolveSession(
+    whatsAppSessions: WhatsAppSessionRepository,
     applicationId: string,
     requestedSessionId: string | undefined,
   ): Promise<{ readonly id: string }> {
-    const sessions = await this.whatsAppSessions.listForApplication(applicationId);
+    const sessions = await whatsAppSessions.listForApplication(applicationId);
 
     if (requestedSessionId !== undefined) {
       const requested = sessions.find((session) => session.id === requestedSessionId);
@@ -132,6 +141,7 @@ export class CreateNotificationService {
    * answering it with the first response would hide that.
    */
   private async claimIdempotencyKey(
+    idempotencyKeys: IdempotencyKeyRepository,
     transaction: QueryExecutor,
     input: CreateNotificationInput,
     fingerprint: Buffer,
@@ -147,7 +157,7 @@ export class CreateNotificationService {
       return { idempotencyKeyId: null, lockToken };
     }
 
-    const claim = await this.idempotencyKeys.claim(transaction, {
+    const claim = await idempotencyKeys.claim(transaction, {
       applicationId: input.applicationId,
       key: input.idempotencyKey,
       requestMethod: 'POST',
@@ -205,21 +215,36 @@ export class CreateNotificationService {
       );
     }
 
-    const session = await this.resolveSession(input.applicationId, input.whatsAppSessionId);
     const fingerprint = fingerprintRequest(input);
     const correlationId = getCorrelationId() ?? this.identifiers.generate();
     const notificationId = this.identifiers.generate();
     const isScheduled = input.scheduledAt !== undefined;
     const status: NotificationStatus = isScheduled ? 'SCHEDULED' : 'QUEUED';
 
-    const outcome = await this.connection.database.transaction(async (transaction) => {
-      const claim = await this.claimIdempotencyKey(transaction, input, fingerprint, now);
+    return withTenantScope(this.connection.database, input.applicationId, async (transaction) => {
+      const notifications = new NotificationRepository(transaction);
+      const idempotencyKeys = new IdempotencyKeyRepository(transaction);
+      const session = await this.resolveSession(
+        new WhatsAppSessionRepository(transaction),
+        input.applicationId,
+        input.whatsAppSessionId,
+      );
+      const claim = await this.claimIdempotencyKey(
+        idempotencyKeys,
+        transaction,
+        input,
+        fingerprint,
+        now,
+      );
 
       if (claim.replayOf !== undefined) {
-        return { notificationId: claim.replayOf, wasReplayed: true };
+        return {
+          notification: await this.readOrFail(notifications, input.applicationId, claim.replayOf),
+          wasReplayed: true,
+        };
       }
 
-      await this.notifications.insert(transaction, {
+      await notifications.insert(transaction, {
         id: notificationId,
         applicationId: input.applicationId,
         whatsAppSessionId: session.id,
@@ -236,7 +261,7 @@ export class CreateNotificationService {
         metadata: input.metadata,
       });
 
-      await this.notifications.appendEvent(transaction, {
+      await notifications.appendEvent(transaction, {
         id: this.identifiers.generate(),
         applicationId: input.applicationId,
         notificationId,
@@ -264,7 +289,7 @@ export class CreateNotificationService {
       );
 
       if (claim.idempotencyKeyId !== null) {
-        await this.idempotencyKeys.complete(transaction, {
+        await idempotencyKeys.complete(transaction, {
           id: claim.idempotencyKeyId,
           lockToken: claim.lockToken,
           responseStatus: 201,
@@ -274,17 +299,10 @@ export class CreateNotificationService {
         });
       }
 
-      return { notificationId, wasReplayed: false };
+      return {
+        notification: await this.readOrFail(notifications, input.applicationId, notificationId),
+        wasReplayed: false,
+      };
     });
-
-    const notification = await this.notifications.findById(
-      input.applicationId,
-      outcome.notificationId,
-    );
-    if (notification === undefined) {
-      throw new Error('The notification disappeared immediately after it was created.');
-    }
-
-    return { notification, wasReplayed: outcome.wasReplayed };
   }
 }

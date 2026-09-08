@@ -1,6 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
 
-import { type Database } from '../connection';
 import { webhookDeliveries } from '../schema';
 import { type QueryExecutor } from './notification.repository';
 
@@ -35,9 +34,9 @@ export interface RecordWebhookDeliveryInput {
 }
 
 export class WebhookDeliveryRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

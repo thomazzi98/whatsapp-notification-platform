@@ -7,4 +7,5 @@ export {
   type DatabaseConnection,
 } from './connection';
 export * from './repositories';
+export { grantTenantRoleMembership, TENANT_ROLE, withTenantScope } from './tenant-scope';
 export * as schema from './schema';

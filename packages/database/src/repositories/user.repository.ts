@@ -1,7 +1,7 @@
 import { type UserRole, type UserStatus } from '@platform/domain';
 import { eq, sql } from 'drizzle-orm';
 
-import { type Database } from '../connection';
+import { type QueryExecutor } from './notification.repository';
 import { users } from '../schema';
 
 export interface UserRecord {
@@ -18,9 +18,9 @@ export interface UserRecord {
 }
 
 export class UserRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

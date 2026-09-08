@@ -3,7 +3,7 @@ import path from 'node:path';
 import { startTestDatabase, type StartedTestDatabase } from '@platform/testing';
 import { type TestProject } from 'vitest/node';
 
-import { provisionQueues } from '../src/queue-client';
+import { bootstrapQueues } from '../src/queue-client';
 
 let database: StartedTestDatabase | undefined;
 
@@ -13,7 +13,7 @@ export async function setup(project: TestProject): Promise<void> {
   database = await startTestDatabase(migrationsFolder);
   // Mirrors the one-shot migrate container: schema first, then queues, before
   // anything that sends or works a job exists.
-  await provisionQueues(database.connectionUrl, 'pgboss');
+  await bootstrapQueues(database.connectionUrl, 'pgboss');
 
   project.provide('databaseUrl', database.connectionUrl);
 }

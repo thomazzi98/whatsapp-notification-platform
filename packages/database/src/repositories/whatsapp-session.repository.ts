@@ -1,7 +1,7 @@
 import { type ProviderSessionStatus } from '@platform/domain';
 import { and, eq, sql } from 'drizzle-orm';
 
-import { type Database } from '../connection';
+import { type QueryExecutor } from './notification.repository';
 import { whatsAppSessions } from '../schema';
 
 export interface WhatsAppSessionRecord {
@@ -24,9 +24,9 @@ export interface WhatsAppSessionRecord {
 }
 
 export class WhatsAppSessionRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

@@ -118,9 +118,9 @@ export interface NotificationPage {
 }
 
 export class NotificationRepository {
-  private readonly database: Database;
+  private readonly database: QueryExecutor;
 
-  public constructor(database: Database) {
+  public constructor(database: QueryExecutor) {
     this.database = database;
   }
 

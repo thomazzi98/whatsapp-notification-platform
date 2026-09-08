@@ -1,7 +1,13 @@
-import { applyMigrations, createDatabaseConnection, migrationsFolder } from '@platform/database';
+import {
+  applyMigrations,
+  createDatabaseConnection,
+  grantTenantRoleMembership,
+  migrationsFolder,
+  TENANT_ROLE,
+} from '@platform/database';
 
 import { grantSendPrivileges, readRoleFromConnectionUrl } from '../grant-send-privileges';
-import { provisionQueues } from '../queue-client';
+import { bootstrapQueues } from '../queue-client';
 
 /**
  * The one-shot bootstrap the API and the worker depend on.
@@ -36,8 +42,10 @@ async function main(): Promise<void> {
     await connection.close();
   }
 
-  await provisionQueues(connectionUrl, queueSchema);
-  process.stdout.write(`Queues provisioned in schema "${queueSchema}".\n`);
+  await bootstrapQueues(connectionUrl, queueSchema);
+  process.stdout.write(
+    `Queues provisioned in schema "${queueSchema}", and "${TENANT_ROLE}" may enqueue.\n`,
+  );
 
   await grantApplicationSendPrivileges(connectionUrl, queueSchema);
 }
@@ -69,6 +77,13 @@ async function grantApplicationSendPrivileges(
 
   await grantSendPrivileges(systemConnectionUrl, queueSchema, applicationRole);
   process.stdout.write(`Granted "${applicationRole}" permission to enqueue jobs.\n`);
+
+  // Every start, not once at database creation: an installation that predates
+  // the tenant role would otherwise keep a database its own API cannot serve
+  // from, and the failure would surface as an authorisation error on every
+  // API-key request rather than as a missing migration.
+  await grantTenantRoleMembership(systemConnectionUrl, applicationRole);
+  process.stdout.write(`Granted "${applicationRole}" the right to assume "${TENANT_ROLE}".\n`);
 }
 
 async function run(): Promise<void> {

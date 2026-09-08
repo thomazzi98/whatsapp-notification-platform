@@ -1,5 +1,7 @@
+import { TENANT_ROLE } from '@platform/database';
 import { PgBoss } from 'pg-boss';
 
+import { grantSendPrivileges } from './grant-send-privileges';
 import { queueDefinitions } from './queue-definitions';
 
 export interface QueueClientOptions {
@@ -27,6 +29,23 @@ export function createQueueClient(options: QueueClientOptions): PgBoss {
     // nor the worker races to install the queue schema at startup.
     migrate: false,
   });
+}
+
+/**
+ * Everything a database needs before any process sends or works a job: the
+ * queue schema, every queue, and the privileges the tenant role needs to
+ * enqueue.
+ *
+ * One function rather than a sequence each caller repeats, because the migrate
+ * step and the test harnesses have to end up with the same database. They did
+ * not once, and the symptom was every notification returning 500 in tests while
+ * production was fine.
+ */
+export async function bootstrapQueues(connectionUrl: string, schema: string): Promise<void> {
+  await provisionQueues(connectionUrl, schema);
+  // A notification and its dispatch job commit in one transaction, and that
+  // transaction runs as the tenant role.
+  await grantSendPrivileges(connectionUrl, schema, TENANT_ROLE);
 }
 
 /**

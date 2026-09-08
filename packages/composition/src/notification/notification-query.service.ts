@@ -7,6 +7,7 @@ import {
   type NotificationListFilters,
   type NotificationRecord,
   NotificationRepository,
+  withTenantScope,
 } from '@platform/database';
 import {
   CLOCK_PORT,
@@ -42,7 +43,6 @@ interface CursorPayload {
 @Injectable()
 export class NotificationQueryService {
   private readonly connection: DatabaseConnection;
-  private readonly notifications: NotificationRepository;
   private readonly configuration: ApplicationConfiguration;
   private readonly clock: ClockPort;
   private readonly identifiers: IdentifierGeneratorPort;
@@ -54,7 +54,6 @@ export class NotificationQueryService {
     @Inject(IDENTIFIER_GENERATOR_PORT) identifiers: IdentifierGeneratorPort,
   ) {
     this.connection = connection;
-    this.notifications = new NotificationRepository(connection.database);
     this.configuration = configuration;
     this.clock = clock;
     this.identifiers = identifiers;
@@ -102,11 +101,12 @@ export class NotificationQueryService {
       .digest('base64url');
   }
 
-  public async getOrFail(
+  private async readOrFail(
+    notifications: NotificationRepository,
     applicationId: string,
     notificationId: string,
   ): Promise<NotificationRecord> {
-    const found = await this.notifications.findById(applicationId, notificationId);
+    const found = await notifications.findById(applicationId, notificationId);
 
     if (found === undefined) {
       throw new DomainError('notification_not_found', 'That notification does not exist.');
@@ -114,13 +114,27 @@ export class NotificationQueryService {
     return found;
   }
 
+  public async getOrFail(
+    applicationId: string,
+    notificationId: string,
+  ): Promise<NotificationRecord> {
+    return withTenantScope(this.connection.database, applicationId, async (transaction) =>
+      this.readOrFail(new NotificationRepository(transaction), applicationId, notificationId),
+    );
+  }
+
   public async listEvents(
     applicationId: string,
     notificationId: string,
   ): Promise<readonly NotificationEventRecord[]> {
-    await this.getOrFail(applicationId, notificationId);
+    return withTenantScope(this.connection.database, applicationId, async (transaction) => {
+      const notifications = new NotificationRepository(transaction);
+      // Reading the notification first is what turns a request for another
+      // tenant's timeline into a 404 rather than an empty list.
+      await this.readOrFail(notifications, applicationId, notificationId);
 
-    return this.notifications.listEvents(applicationId, notificationId);
+      return notifications.listEvents(applicationId, notificationId);
+    });
   }
 
   public async list(
@@ -133,11 +147,13 @@ export class NotificationQueryService {
     };
 
     const cursor = this.decodeCursor(query.cursor);
-    const page = await this.notifications.list(
-      applicationId,
-      filters,
-      cursor === undefined ? undefined : { createdAt: new Date(cursor.createdAt), id: cursor.id },
-      query.limit,
+    const page = await withTenantScope(this.connection.database, applicationId, async (transaction) =>
+      new NotificationRepository(transaction).list(
+        applicationId,
+        filters,
+        cursor === undefined ? undefined : { createdAt: new Date(cursor.createdAt), id: cursor.id },
+        query.limit,
+      ),
     );
 
     return {
@@ -161,45 +177,48 @@ export class NotificationQueryService {
    * whichever of the two commits first wins, and the other sees no rows.
    */
   public async cancel(applicationId: string, notificationId: string): Promise<NotificationRecord> {
-    const existing = await this.getOrFail(applicationId, notificationId);
+    return withTenantScope(this.connection.database, applicationId, async (transaction) => {
+      const notifications = new NotificationRepository(transaction);
+      const existing = await this.readOrFail(notifications, applicationId, notificationId);
 
-    if (!isCancellableNotificationStatus(existing.status)) {
-      throw new DomainError(
-        'notification_not_cancellable',
-        `A notification in the ${existing.status} state cannot be cancelled.`,
-        { currentStatus: existing.status },
-      );
-    }
+      if (!isCancellableNotificationStatus(existing.status)) {
+        throw new DomainError(
+          'notification_not_cancellable',
+          `A notification in the ${existing.status} state cannot be cancelled.`,
+          { currentStatus: existing.status },
+        );
+      }
 
-    const now = this.clock.now();
-    const cancelled = await this.notifications.applyTransition(this.connection.database, {
-      applicationId,
-      notificationId,
-      expectedStatus: existing.status,
-      nextStatus: 'CANCELLED',
-      changes: { cancelledAt: now },
-      now,
+      const now = this.clock.now();
+      const cancelled = await notifications.applyTransition(transaction, {
+        applicationId,
+        notificationId,
+        expectedStatus: existing.status,
+        nextStatus: 'CANCELLED',
+        changes: { cancelledAt: now },
+        now,
+      });
+
+      if (cancelled === undefined) {
+        throw new DomainError(
+          'notification_not_cancellable',
+          'The notification changed state before it could be cancelled.',
+        );
+      }
+
+      await notifications.appendEvent(transaction, {
+        id: this.identifiers.generate(),
+        applicationId,
+        notificationId,
+        eventType: 'notification.cancelled',
+        fromStatus: existing.status,
+        toStatus: 'CANCELLED',
+        attemptNumber: null,
+        payload: {},
+        correlationId: getCorrelationId() ?? null,
+      });
+
+      return cancelled;
     });
-
-    if (cancelled === undefined) {
-      throw new DomainError(
-        'notification_not_cancellable',
-        'The notification changed state before it could be cancelled.',
-      );
-    }
-
-    await this.notifications.appendEvent(this.connection.database, {
-      id: this.identifiers.generate(),
-      applicationId,
-      notificationId,
-      eventType: 'notification.cancelled',
-      fromStatus: existing.status,
-      toStatus: 'CANCELLED',
-      attemptNumber: null,
-      payload: {},
-      correlationId: getCorrelationId() ?? null,
-    });
-
-    return cancelled;
   }
 }
