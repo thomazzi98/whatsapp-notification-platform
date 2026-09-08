@@ -5,6 +5,7 @@ import { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { WahaProvider } from './waha-provider';
+import { toProviderEvent } from './webhook';
 
 const apiKey = 'integration-stub-key';
 let stub: FastifyInstance;
@@ -200,7 +201,7 @@ describe('recipient resolution', () => {
 });
 
 describe('sending', () => {
-  it('returns the flat provider message identifier', async () => {
+  it('reads the identifier out of the key the engine answers with', async () => {
     await createConnectedSession();
 
     const result = await provider.sendTextMessage({
@@ -211,9 +212,49 @@ describe('sending', () => {
 
     expect(result.outcome).toBe('succeeded');
     if (result.outcome === 'succeeded') {
-      expect(result.value.providerMessageId).toBeTypeOf('string');
-      expect(result.value.providerMessageId.startsWith('true_')).toBe(true);
+      // The raw identifier, not a serialized form. The acknowledgement will
+      // serialize it against a different address, so only this part matches.
+      expect(result.value.providerMessageId).toMatch(/^STUB\d{6}$/);
     }
+  });
+
+  it('stores the identifier an acknowledgement will report', async () => {
+    await createConnectedSession();
+    const result = await provider.sendTextMessage({
+      sessionName: 'default',
+      chatIdentifier: '5511999998888@c.us',
+      text: 'Your order has shipped.',
+    });
+
+    if (result.outcome !== 'succeeded') {
+      throw new Error('The send should have succeeded.');
+    }
+
+    await fetch(`${baseUrl}/__stub/sessions/default/acknowledge`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messageId: result.value.providerMessageId, ack: 2 }),
+    });
+    const delivered = await fetch(`${baseUrl}/__stub/webhooks`);
+    const body = (await delivered.json()) as {
+      deliveries: { envelope: { event: string; payload: Record<string, unknown> } }[];
+    };
+    const acknowledgement = body.deliveries.find((entry) => entry.envelope.event === 'message.ack');
+
+    // The whole point: what the send stored and what the receipt reports have
+    // to reduce to the same thing, or no message ever reaches DELIVERED.
+    const event = toProviderEvent({
+      id: 'event-1',
+      session: 'default',
+      event: 'message.ack',
+      payload: acknowledgement?.envelope.payload ?? {},
+      me: null,
+    });
+
+    expect(event).toMatchObject({
+      kind: 'message_acknowledgement',
+      providerMessageId: result.value.providerMessageId,
+    });
   });
 
   it('fails when the session is not connected', async () => {

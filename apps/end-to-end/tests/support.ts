@@ -126,10 +126,20 @@ export async function sendNotification(page: Page, recipient: string, body: stri
   await expect(page.getByRole('heading', { name: 'Notification' })).toBeVisible();
 }
 
-/** The identifier the provider gave the message, once the worker has sent it. */
+/**
+ * The identifier the provider gave the message, once the worker has sent it.
+ *
+ * Read from the field that describes it rather than by matching the shape of
+ * the string: the shape is the provider's business and has already changed
+ * once, and a test that encodes it fails for reasons that are not about the
+ * platform.
+ */
 export async function readProviderMessageId(page: Page): Promise<string> {
-  const value = page.getByText(/^true_/);
-  await expect(value).toBeVisible({ timeout: 30_000 });
+  const value = page
+    .locator('dt', { hasText: 'Provider message' })
+    .locator('xpath=following-sibling::dd[1]');
 
-  return (await value.textContent()) ?? '';
+  await expect(value).not.toHaveText('—', { timeout: 30_000 });
+
+  return ((await value.textContent()) ?? '').trim();
 }
