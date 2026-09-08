@@ -14,9 +14,16 @@ export interface ApplicationRecord {
   readonly rateLimitBurst: number;
   readonly dailySendLimit: number | null;
   readonly defaultMaximumAttempts: number;
+  readonly unknownOutcomePolicy: 'RETRY' | 'FAIL_CLOSED';
   readonly archivedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+}
+
+export interface DeliverySettings {
+  readonly status: ApplicationStatus;
+  readonly defaultMaximumAttempts: number;
+  readonly unknownOutcomePolicy: 'RETRY' | 'FAIL_CLOSED';
 }
 
 export interface UpdateApplicationInput {
@@ -25,6 +32,7 @@ export interface UpdateApplicationInput {
   readonly rateLimitBurst?: number;
   readonly dailySendLimit?: number | null;
   readonly defaultMaximumAttempts?: number;
+  readonly unknownOutcomePolicy?: 'RETRY' | 'FAIL_CLOSED';
 }
 
 /**
@@ -81,6 +89,28 @@ export class ApplicationRepository {
       .limit(1);
 
     return found as ApplicationRecord | undefined;
+  }
+
+  /**
+   * Reads the settings the delivery pipeline needs, keyed only by application.
+   *
+   * The worker is reached through a job, not a request, so it has no
+   * organization in hand and nothing to scope by. Returning a narrow projection
+   * rather than the whole record keeps the tenant-scoped signature the rule for
+   * everything a user can actually reach.
+   */
+  public async findDeliverySettings(applicationId: string): Promise<DeliverySettings | undefined> {
+    const [found] = await this.database
+      .select({
+        status: applications.status,
+        defaultMaximumAttempts: applications.defaultMaximumAttempts,
+        unknownOutcomePolicy: applications.unknownOutcomePolicy,
+      })
+      .from(applications)
+      .where(and(eq(applications.id, applicationId), isNull(applications.archivedAt)))
+      .limit(1);
+
+    return found as DeliverySettings | undefined;
   }
 
   public async update(

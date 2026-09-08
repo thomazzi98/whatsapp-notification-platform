@@ -41,6 +41,10 @@ services:
     restart: "no"
     environment:
       DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD:-platform_system_password}@postgres:5432/${DATABASE_NAME:-notifications}
+      # Read for its role name only: the bootstrap grants that role permission
+      # to enqueue, which is what lets a notification and its dispatch job
+      # commit in one transaction.
+      DATABASE_APPLICATION_URL: postgres://${DATABASE_APPLICATION_USER:-platform_application}:${DATABASE_APPLICATION_PASSWORD:-platform_application_password}@postgres:5432/${DATABASE_NAME:-notifications}
       QUEUE_SCHEMA: ${QUEUE_SCHEMA:-pgboss}
     depends_on:
       postgres:
@@ -87,6 +91,33 @@ services:
       retries: 6
       start_period: 15s
 
+  # Same image as the API, different command. It is a separate service because
+  # sending to WhatsApp is slow and paced, and a burst of API traffic must not
+  # be able to starve delivery — nor the reverse.
+  worker:
+    build:
+      context: .
+      dockerfile: tools/docker/node-service.Dockerfile
+      args:
+        PACKAGE_NAME: "@platform/worker"
+    command: ["node", "dist/main.js"]
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_APPLICATION_URL: postgres://${DATABASE_APPLICATION_USER:-platform_application}:${DATABASE_APPLICATION_PASSWORD:-platform_application_password}@postgres:5432/${DATABASE_NAME:-notifications}
+      DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD:-platform_system_password}@postgres:5432/${DATABASE_NAME:-notifications}
+    # Long enough for an in-flight WhatsApp send to finish. A job killed before
+    # it reports back is not lost, but it does leave an outcome nobody can
+    # determine, which is the one situation worth spending patience to avoid.
+    stop_grace_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   # A deterministic stand-in for WAHA, so the delivery pipeline can be exercised
   # without a phone, a scannable code, or an account that can be banned.
   # Started only with: docker compose --profile stub up
@@ -102,6 +133,12 @@ services:
     environment:
       PORT: 3000
       WAHA_API_KEY: ${WAHA_API_KEY:-stub-api-key}
+    # Answers to the same hostname as the real provider, so switching between
+    # them is a profile flag rather than a configuration change.
+    networks:
+      default:
+        aliases:
+          - waha
     ports:
       - "127.0.0.1:3200:3000"
     healthcheck:

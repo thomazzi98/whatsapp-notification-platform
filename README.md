@@ -80,7 +80,7 @@ stack cannot collide with another local project:
 | Postgres | `127.0.0.1:55432`       |
 
 The API exposes two probes with deliberately different meanings. `/health` is liveness and checks
-no dependency at all � a liveness probe that touches the database turns a brief Postgres outage
+no dependency at all — a liveness probe that touches the database turns a brief Postgres outage
 into a restart storm. `/ready` reports whether this instance can do useful work and returns 503,
 with the reason, when the database is unreachable.
 

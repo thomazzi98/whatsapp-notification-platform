@@ -20,11 +20,13 @@
     "@platform/database": "workspace:*",
     "@platform/domain": "workspace:*",
     "drizzle-orm": "catalog:",
+    "pg": "catalog:",
     "pg-boss": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@platform/testing": "workspace:*",
+    "@types/pg": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:",

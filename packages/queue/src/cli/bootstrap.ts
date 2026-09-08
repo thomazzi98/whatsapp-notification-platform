@@ -1,5 +1,6 @@
 import { applyMigrations, createDatabaseConnection, migrationsFolder } from '@platform/database';
 
+import { grantSendPrivileges, readRoleFromConnectionUrl } from '../grant-send-privileges';
 import { provisionQueues } from '../queue-client';
 
 /**
@@ -37,6 +38,37 @@ async function main(): Promise<void> {
 
   await provisionQueues(connectionUrl, queueSchema);
   process.stdout.write(`Queues provisioned in schema "${queueSchema}".\n`);
+
+  await grantApplicationSendPrivileges(connectionUrl, queueSchema);
+}
+
+/**
+ * Runs after the queues exist, because the grant has to cover the tables and
+ * per-queue partitions pg-boss has just created.
+ */
+async function grantApplicationSendPrivileges(
+  systemConnectionUrl: string,
+  queueSchema: string,
+): Promise<void> {
+  const applicationUrl = process.env.DATABASE_APPLICATION_URL;
+
+  if (applicationUrl === undefined || applicationUrl.length === 0) {
+    // A single-role setup, which is what the test harness uses. Nothing to
+    // grant: the one role already owns the schema.
+    return;
+  }
+
+  const applicationRole = readRoleFromConnectionUrl(applicationUrl);
+  if (applicationRole === undefined) {
+    process.stderr.write('DATABASE_APPLICATION_URL carries no role name.\n');
+    process.exit(1);
+  }
+  if (applicationRole === readRoleFromConnectionUrl(systemConnectionUrl)) {
+    return;
+  }
+
+  await grantSendPrivileges(systemConnectionUrl, queueSchema, applicationRole);
+  process.stdout.write(`Granted "${applicationRole}" permission to enqueue jobs.\n`);
 }
 
 async function run(): Promise<void> {

@@ -64,7 +64,7 @@ function collectProductionIssues(configuration: ApplicationConfiguration): Confi
  * An empty assignment in a .env file means "not set", which is how people
  * actually edit them. Zod applies a default only for `undefined`, so without
  * this a blank line produces a confusing type error instead of the documented
- * default � and a genuinely required variable still fails, as it should.
+ * default — and a genuinely required variable still fails, as it should.
  */
 function treatEmptyValuesAsUnset(
   environment: Record<string, string | undefined>,

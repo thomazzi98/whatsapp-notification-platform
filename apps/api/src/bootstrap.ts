@@ -37,7 +37,7 @@ export async function bootstrapApi(configuration: ApplicationConfiguration): Pro
   );
 
   await application.register(fastifyCookie);
-  registerCorrelationHook(adapter.getInstance(), configuration.observability.recipientSalt);
+  registerCorrelationHook(adapter.getInstance(), logger);
   application.useGlobalFilters(new ProblemDetailsFilter(logger, configuration.http.publicBaseUrl));
   application.enableShutdownHooks();
 

@@ -22,7 +22,7 @@ export class ApiModule {
     return {
       module: this,
       imports: [
-        DatabaseModule.forConfiguration(configuration),
+        DatabaseModule.forConfiguration(configuration, { applicationName: 'platform-api' }),
         // The API only sends jobs; the worker is the process that supervises.
         QueueModule.forConfiguration(configuration, { supervise: false }),
         RuntimeModule,

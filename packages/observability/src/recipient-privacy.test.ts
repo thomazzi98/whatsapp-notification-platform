@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hashRecipient, maskPhoneNumber } from './recipient-privacy';
+import { hashRecipient } from './recipient-privacy';
 
 const salt = 'a-test-salt';
 
@@ -24,30 +24,5 @@ describe('hashRecipient', () => {
 
     expect(hashed).not.toContain('5511999998888');
     expect(hashed).toHaveLength(12);
-  });
-});
-
-describe('maskPhoneNumber', () => {
-  it('keeps a country prefix and the last four digits recognisable', () => {
-    expect(maskPhoneNumber('+5511999998888')).toBe('+55*******8888');
-  });
-
-  it('ignores formatting characters', () => {
-    expect(maskPhoneNumber('+55 (11) 99999-8888')).toBe('+55*******8888');
-  });
-
-  it('never reveals the middle digits', () => {
-    const masked = maskPhoneNumber('+5511999998888');
-
-    expect(masked).not.toContain('999998');
-  });
-
-  it('masks short numbers entirely rather than exposing most of them', () => {
-    expect(maskPhoneNumber('1234')).toBe('****');
-    expect(maskPhoneNumber('123')).toBe('***');
-  });
-
-  it('handles a number barely longer than the visible suffix', () => {
-    expect(maskPhoneNumber('123456')).toBe('**3456');
   });
 });

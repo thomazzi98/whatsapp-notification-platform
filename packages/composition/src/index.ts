@@ -25,12 +25,25 @@ export {
   type CreateNotificationResult,
   CreateNotificationService,
 } from './notification/create-notification.service';
+export {
+  type DispatchInput,
+  DispatchNotificationService,
+  type DispatchOutcome,
+  dispatchOutcomes,
+  type DispatchResult,
+} from './notification/dispatch-notification.service';
+export {
+  type MaintenanceReport,
+  NotificationMaintenanceService,
+} from './notification/notification-maintenance.service';
+export { NotificationDeliveryModule } from './notification/notification-delivery.module';
 export { NotificationModule } from './notification/notification.module';
 export {
   type NotificationListQuery,
   type NotificationListResult,
   NotificationQueryService,
 } from './notification/notification-query.service';
+export { WhatsAppProviderModule } from './provider/whatsapp-provider.module';
 export { QueueModule } from './queue/queue.module';
 export { RuntimeModule } from './runtime/runtime.module';
 export { type ApiKeyPrincipal, ApiKeyService, type CreatedApiKey } from './tenancy/api-key.service';

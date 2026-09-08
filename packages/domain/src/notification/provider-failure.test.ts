@@ -4,6 +4,7 @@ import {
   classifyFailureCode,
   createProviderFailure,
   isRetryable,
+  hasUnknownOutcome,
   type ProviderFailureCode,
   providerFailureCodes,
 } from './provider-failure';
@@ -55,12 +56,49 @@ describe('failure classification', () => {
     expect(classifyFailureCode('provider_acknowledgement_error')).toBe('PERMANENT');
   });
 
-  it('treats an unknown send outcome as permanent rather than risking a duplicate', () => {
-    expect(classifyFailureCode('provider_outcome_unknown')).toBe('PERMANENT');
+  it('retries an unknown send outcome, which is the platform default', () => {
+    // Retrying risks a duplicate and failing risks losing a delivered message.
+    // The default answer is to try again; a tenant that prefers the other risk
+    // opts into the fail-closed code below.
+    expect(classifyFailureCode('provider_outcome_unknown')).toBe('RETRYABLE');
+  });
+
+  it('never resends once a tenant has chosen to fail closed', () => {
+    expect(classifyFailureCode('unknown_outcome_fail_closed')).toBe('PERMANENT');
   });
 
   it('retries an unmapped provider error, conservatively', () => {
     expect(classifyFailureCode('provider_unknown_error')).toBe('RETRYABLE');
+  });
+});
+
+describe('hasUnknownOutcome', () => {
+  it('recognises the failures after which a send may still have happened', () => {
+    const ambiguous: ProviderFailureCode[] = [
+      'provider_timeout',
+      'provider_aborted',
+      'provider_connection_lost',
+      'provider_outcome_unknown',
+    ];
+
+    for (const code of ambiguous) {
+      expect(hasUnknownOutcome(createProviderFailure(code, 'No answer.')), code).toBe(true);
+    }
+  });
+
+  it('does not treat a refused connection as ambiguous', () => {
+    // Nothing was written to a socket that was never accepted, so the message
+    // certainly was not sent. Keeping this distinct is what stops a provider
+    // outage from permanently failing a fail-closed tenant's notifications.
+    expect(
+      hasUnknownOutcome(createProviderFailure('provider_unreachable', 'Connection refused.')),
+    ).toBe(false);
+  });
+
+  it('does not treat a rejected request as ambiguous', () => {
+    for (const code of ['provider_invalid_request', 'provider_rate_limited'] as const) {
+      expect(hasUnknownOutcome(createProviderFailure(code, 'Rejected.')), code).toBe(false);
+    }
   });
 });
 

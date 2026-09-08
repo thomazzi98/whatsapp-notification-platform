@@ -22,6 +22,7 @@
     "@platform/database": "workspace:*",
     "@platform/domain": "workspace:*",
     "@platform/observability": "workspace:*",
+    "@platform/provider-whatsapp": "workspace:*",
     "@platform/queue": "workspace:*",
     "@platform/security": "workspace:*",
     "pg-boss": "catalog:",

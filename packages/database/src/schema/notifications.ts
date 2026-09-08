@@ -209,6 +209,15 @@ export const notificationEvents = pgTable(
   ],
 );
 
+/**
+ * The ledger of provider calls.
+ *
+ * Its reason for existing is the row with no outcome: an attempt is written and
+ * committed before the network call, so a worker that dies mid-send leaves
+ * durable evidence that a request may have reached WhatsApp. Without it a crash
+ * is indistinguishable from a send that never happened, and the platform would
+ * have to guess whether resending duplicates a delivered message.
+ */
 export const notificationSendAttempts = pgTable(
   'notification_send_attempts',
   {
@@ -216,16 +225,10 @@ export const notificationSendAttempts = pgTable(
     applicationId: uuid('application_id').notNull(),
     notificationId: uuid('notification_id').notNull(),
     attemptNumber: integer('attempt_number').notNull(),
-    claimToken: uuid('claim_token').notNull(),
-    whatsAppSessionId: uuid('whatsapp_session_id').notNull(),
-    recipientChatIdentifier: text('recipient_chat_identifier').notNull(),
-    // Lets a crashed attempt be matched against the provider's own history.
-    bodyFingerprint: text('body_fingerprint').notNull(),
     requestStartedAt: timestampColumn('request_started_at').notNull().defaultNow(),
     requestFinishedAt: timestampColumn('request_finished_at'),
     outcome: text('outcome'),
     providerMessageId: text('provider_message_id'),
-    providerStatusCode: integer('provider_status_code'),
     failureCode: text('failure_code'),
   },
   (table) => [
@@ -235,7 +238,7 @@ export const notificationSendAttempts = pgTable(
     // Finds attempts whose outcome was never written because the process died.
     // Normally empty; this is the crash recovery index.
     index('notification_send_attempts_unresolved_index')
-      .on(table.requestStartedAt)
+      .on(table.notificationId)
       .where(sql`${table.outcome} is null`),
     foreignKey({
       name: 'notification_send_attempts_notification_fkey',
@@ -246,6 +249,10 @@ export const notificationSendAttempts = pgTable(
     check(
       'notification_send_attempts_outcome_check',
       sql`${table.outcome} is null or ${table.outcome} in ('SUCCEEDED', 'FAILED', 'UNKNOWN')`,
+    ),
+    check(
+      'notification_send_attempts_resolution_check',
+      sql`(${table.outcome} is null) = (${table.requestFinishedAt} is null)`,
     ),
   ],
 );

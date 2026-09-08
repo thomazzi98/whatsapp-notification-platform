@@ -1,0 +1,47 @@
+{
+  "name": "@platform/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Background worker that dispatches notifications to WhatsApp and repairs stalled deliveries.",
+  "main": "./dist/main.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@platform/composition": "workspace:*",
+    "@platform/configuration": "workspace:*",
+    "@platform/domain": "workspace:*",
+    "@platform/observability": "workspace:*",
+    "@platform/queue": "workspace:*",
+    "pg-boss": "catalog:",
+    "pino": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "catalog:",
+    "@platform/database": "workspace:*",
+    "@platform/provider-whatsapp": "workspace:*",
+    "@platform/testing": "workspace:*",
+    "@platform/waha-stub": "workspace:*",
+    "eslint": "catalog:",
+    "fastify": "catalog:",
+    "rimraf": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -25,8 +25,8 @@ export const queueDefinitions: readonly Queue[] = [
   {
     name: queueNames.notificationDispatch,
     /*
-     * `exclusive` keeps at most one live job per singletonKey — the
-     * notification id — while still accepting a new job once the previous one
+     * `exclusive` keeps at most one live job per singletonKey â€” the
+     * notification id â€” while still accepting a new job once the previous one
      * has completed, which is what a retry needs.
      *
      * The alternatives were measured rather than assumed, because getting this

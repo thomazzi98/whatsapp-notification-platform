@@ -1,3 +1,4 @@
+import { hasUnknownOutcome } from '@platform/domain';
 import { describe, expect, it } from 'vitest';
 
 import { classifyHttpStatus, classifyTransportError } from './classify-failure';
@@ -77,20 +78,58 @@ describe('classifyTransportError', () => {
     );
   });
 
-  it('treats anything else as an unreachable provider', () => {
+  it('separates a refused connection from a connection that was lost', () => {
+    // The distinction decides whether a fail-closed tenant's notification is
+    // retried or stopped: nothing was written to a refused socket, so the
+    // message certainly was not sent.
+    const refused = classifyTransportError(
+      new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } }),
+      false,
+    );
+
+    expect(refused.code).toBe('provider_unreachable');
+    expect(hasUnknownOutcome(refused)).toBe(false);
+  });
+
+  it.each(['ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH'])(
+    'treats %s as never having reached the provider',
+    (systemCode) => {
+      const failure = classifyTransportError(
+        new TypeError('fetch failed', { cause: { code: systemCode } }),
+        false,
+      );
+
+      expect(failure.code).toBe('provider_unreachable');
+    },
+  );
+
+  it('treats a reset connection as an unknown outcome', () => {
+    const failure = classifyTransportError(
+      new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }),
+      false,
+    );
+
+    expect(failure.code).toBe('provider_connection_lost');
+    expect(hasUnknownOutcome(failure)).toBe(true);
+  });
+
+  it('treats a transport error with no recognisable cause as an unknown outcome', () => {
+    // Failing towards "we cannot tell" is the safe direction: assuming the
+    // message was not sent is what produces a duplicate.
     expect(classifyTransportError(new TypeError('fetch failed'), false).code).toBe(
-      'provider_unreachable',
+      'provider_connection_lost',
     );
   });
 
   it('handles a thrown value that is not an Error', () => {
-    expect(classifyTransportError('something odd', false).code).toBe('provider_unreachable');
+    expect(classifyTransportError('something odd', false).code).toBe('provider_connection_lost');
   });
 
   it('classifies every transport failure as retryable', () => {
     for (const [error, aborted] of [
       [new Error('boom'), true],
       [new TypeError('fetch failed'), false],
+      [new TypeError('refused', { cause: { code: 'ECONNREFUSED' } }), false],
       ['not an error', false],
     ] as const) {
       expect(classifyTransportError(error, aborted).classification).toBe('RETRYABLE');

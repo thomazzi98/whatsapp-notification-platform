@@ -19,6 +19,12 @@ export interface QueueConfiguration {
   readonly schema: string;
   readonly concurrency: number;
   readonly pollingIntervalSeconds: number;
+  readonly shutdownTimeoutSeconds: number;
+}
+
+export interface DeliveryConfiguration {
+  readonly maximumLifetimeHours: number;
+  readonly stuckClaimTimeoutSeconds: number;
 }
 
 export interface WhatsAppProviderConfiguration {
@@ -50,6 +56,7 @@ export interface ApplicationConfiguration {
   readonly http: HttpConfiguration;
   readonly database: DatabaseConfiguration;
   readonly queue: QueueConfiguration;
+  readonly delivery: DeliveryConfiguration;
   readonly whatsAppProvider: WhatsAppProviderConfiguration;
   readonly security: SecurityConfiguration;
   readonly observability: ObservabilityConfiguration;
@@ -81,6 +88,11 @@ export function toApplicationConfiguration(
       schema: environment.QUEUE_SCHEMA,
       concurrency: environment.QUEUE_CONCURRENCY,
       pollingIntervalSeconds: environment.QUEUE_POLLING_INTERVAL_SECONDS,
+      shutdownTimeoutSeconds: environment.QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
+    },
+    delivery: {
+      maximumLifetimeHours: environment.DELIVERY_MAXIMUM_LIFETIME_HOURS,
+      stuckClaimTimeoutSeconds: environment.DELIVERY_STUCK_CLAIM_TIMEOUT_SECONDS,
     },
     whatsAppProvider: {
       baseUrl: environment.WAHA_BASE_URL,

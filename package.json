@@ -17,6 +17,7 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "verify:layers": "depcruise --config .dependency-cruiser.cjs packages apps tools",
+    "verify:packaging": "node tools/scripts/verify-packaging.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rimraf node_modules",

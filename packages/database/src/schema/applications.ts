@@ -22,6 +22,14 @@ export const applications = pgTable(
     rateLimitBurst: integer('rate_limit_burst').notNull().default(10),
     dailySendLimit: integer('daily_send_limit'),
     defaultMaximumAttempts: integer('default_maximum_attempts').notNull().default(5),
+    /**
+     * What to do when a send's outcome is genuinely unknown — a timeout, or a
+     * connection dropped after the request was written. The provider offers no
+     * idempotency key, so there is no answer that is safe in both directions:
+     * resending risks a duplicate, failing risks losing a message that was
+     * actually delivered. The tenant chooses which risk it prefers.
+     */
+    unknownOutcomePolicy: text('unknown_outcome_policy').notNull().default('RETRY'),
     archivedAt: timestampColumn('archived_at'),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
@@ -46,6 +54,10 @@ export const applications = pgTable(
     check(
       'applications_default_maximum_attempts_check',
       sql`${table.defaultMaximumAttempts} between 1 and 10`,
+    ),
+    check(
+      'applications_unknown_outcome_policy_check',
+      sql`${table.unknownOutcomePolicy} in ('RETRY', 'FAIL_CLOSED')`,
     ),
   ],
 );

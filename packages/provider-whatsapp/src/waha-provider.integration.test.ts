@@ -1,4 +1,4 @@
-import { type AddressInfo } from 'node:net';
+import { type AddressInfo, createServer } from 'node:net';
 
 import { createStubServer } from '@platform/waha-stub';
 import { type FastifyInstance } from 'fastify';
@@ -268,7 +268,7 @@ describe('failure classification against a real server', () => {
     });
   }
 
-  it('classifies a dropped connection as unreachable and retryable', async () => {
+  it('classifies a connection dropped mid-request as an unknown outcome', async () => {
     await createConnectedSession();
 
     const result = await provider.sendTextMessage({
@@ -279,7 +279,9 @@ describe('failure classification against a real server', () => {
 
     expect(result.outcome).toBe('failed');
     if (result.outcome === 'failed') {
-      expect(result.failure.code).toBe('provider_unreachable');
+      // The request was written before the socket died, so whether WhatsApp
+      // acted on it is unknowable from here.
+      expect(result.failure.code).toBe('provider_connection_lost');
       expect(result.failure.classification).toBe('RETRYABLE');
     }
   });
@@ -343,9 +345,9 @@ describe('failure classification against a real server', () => {
     }
   });
 
-  it('reports an unreachable host rather than hanging', async () => {
+  it('reports a refused connection as a send that certainly did not happen', async () => {
     const unreachable = new WahaProvider({
-      baseUrl: 'http://127.0.0.1:1',
+      baseUrl: await findClosedPortUrl(),
       apiKey,
       requestTimeoutMilliseconds: 1000,
     });
@@ -354,6 +356,9 @@ describe('failure classification against a real server', () => {
 
     expect(result.outcome).toBe('failed');
     if (result.outcome === 'failed') {
+      // A refused connection is knowably a non-send, which is what keeps a
+      // provider outage from permanently failing a fail-closed tenant's work.
+      expect(result.failure.code).toBe('provider_unreachable');
       expect(result.failure.classification).toBe('RETRYABLE');
     }
   });
@@ -366,7 +371,7 @@ describe('reachability', () => {
 
   it('reports an unreachable provider without throwing', async () => {
     const unreachable = new WahaProvider({
-      baseUrl: 'http://127.0.0.1:1',
+      baseUrl: await findClosedPortUrl(),
       apiKey,
       requestTimeoutMilliseconds: 500,
     });
@@ -374,3 +379,26 @@ describe('reachability', () => {
     await expect(unreachable.isReachable()).resolves.toBe(false);
   });
 });
+
+/**
+ * A port nothing is listening on, obtained by binding one and letting it go.
+ *
+ * Hard-coding a low port does not work: the fetch specification refuses a list
+ * of well-known ports outright, so the request never reaches the network and
+ * the failure that comes back is not a connection error at all.
+ */
+async function findClosedPortUrl(): Promise<string> {
+  const probe = createServer();
+
+  await new Promise<void>((resolve) => {
+    probe.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolve) => {
+    probe.close(() => {
+      resolve();
+    });
+  });
+
+  return `http://127.0.0.1:${String(port)}`;
+}

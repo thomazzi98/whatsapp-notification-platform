@@ -1,4 +1,5 @@
 export { enqueueInTransaction } from './enqueue-in-transaction';
+export { grantSendPrivileges, readRoleFromConnectionUrl } from './grant-send-privileges';
 export {
   baseJobPayloadSchema,
   type NotificationDispatchPayload,

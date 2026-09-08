@@ -60,10 +60,42 @@ function readRetryAfterSeconds(headers: Headers | undefined): number | undefined
 const ABORT_ERROR_NAMES = new Set(['AbortError', 'TimeoutError']);
 
 /**
+ * Socket errors that happen before any byte of the request is written. A
+ * refused connection, an unresolvable name or an unroutable host all mean the
+ * provider was never reached, so the message certainly was not sent.
+ *
+ * Everything else — a reset, a broken pipe, a socket closing mid-response — is
+ * ambiguous, and the difference matters: it decides whether a fail-closed
+ * tenant's notification is retried or stopped.
+ */
+const PRE_CONNECTION_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+]);
+
+function readSystemErrorCode(error: unknown): string | undefined {
+  const candidates = [error, (error as { cause?: unknown } | null)?.cause];
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'object' || candidate === null) {
+      continue;
+    }
+    const code = (candidate as { code?: unknown }).code;
+    if (typeof code === 'string') {
+      return code;
+    }
+  }
+  return undefined;
+}
+
+/**
  * A transport error carries no status, so the cause has to be read from the
  * error itself. An abort is separated from a genuine timeout because the worker
  * aborts in-flight requests during shutdown, and that is an ordinary event
- * rather than a provider problem — but both leave the send outcome unknown.
+ * rather than a provider problem.
  */
 export function classifyTransportError(error: unknown, wasAborted: boolean): ProviderFailure {
   const name = error instanceof Error ? error.name : '';
@@ -75,5 +107,10 @@ export function classifyTransportError(error: unknown, wasAborted: boolean): Pro
   if (ABORT_ERROR_NAMES.has(name)) {
     return createProviderFailure('provider_timeout', message);
   }
-  return createProviderFailure('provider_unreachable', message);
+
+  const systemCode = readSystemErrorCode(error);
+  if (systemCode !== undefined && PRE_CONNECTION_ERROR_CODES.has(systemCode)) {
+    return createProviderFailure('provider_unreachable', message);
+  }
+  return createProviderFailure('provider_connection_lost', message);
 }

@@ -29,6 +29,7 @@ export {
   type FailureClassification,
   failureClassifications,
   isRetryable,
+  hasUnknownOutcome,
   type ProviderFailure,
   type ProviderFailureCode,
   providerFailureCodes,

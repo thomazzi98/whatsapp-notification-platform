@@ -1,5 +1,5 @@
-import { type NotificationStatus } from '@platform/domain';
-import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { type FailureClassification, type NotificationStatus } from '@platform/domain';
+import { and, desc, eq, inArray, lt, lte, or, sql } from 'drizzle-orm';
 
 import { type Database } from '../connection';
 import { notificationEvents, notifications } from '../schema';
@@ -9,7 +9,9 @@ import { notificationEvents, notifications } from '../schema';
  * transactional case is what lets a notification and its dispatch job commit
  * together.
  */
-export type QueryExecutor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
+export type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+export type QueryExecutor = Database | DatabaseTransaction;
 
 export interface NotificationRecord {
   readonly id: string;
@@ -38,6 +40,7 @@ export interface NotificationRecord {
   readonly deadLetteredAt: Date | null;
   readonly failureCode: string | null;
   readonly failureReason: string | null;
+  readonly failureClassification: FailureClassification | null;
   readonly retryOfNotificationId: string | null;
   readonly correlationId: string | null;
   readonly metadata: Record<string, string>;
@@ -84,6 +87,30 @@ export interface NotificationListFilters {
   readonly templateId?: string;
   readonly createdBefore?: Date;
 }
+
+/**
+ * The columns a transition is allowed to change, named explicitly.
+ *
+ * A loose record would let a mistyped column name compile and then silently
+ * fail to write the timestamp that the whole delivery timeline is read from.
+ */
+export type NotificationTransitionChanges = Partial<{
+  nextAttemptAt: Date | null;
+  claimToken: string | null;
+  claimedAt: Date | null;
+  recipientChatIdentifier: string | null;
+  providerMessageId: string | null;
+  providerAcknowledgement: number;
+  sentAt: Date | null;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+  failedAt: Date | null;
+  cancelledAt: Date | null;
+  deadLetteredAt: Date | null;
+  failureCode: string | null;
+  failureReason: string | null;
+  failureClassification: FailureClassification | null;
+}>;
 
 export interface NotificationPage {
   readonly items: readonly NotificationRecord[];
@@ -215,9 +242,11 @@ export class NotificationRepository {
    * double dispatch impossible — not the queue's own deduplication, which is
    * only an optimisation.
    *
-   * The attempt count increments here, before the provider is called, so a
-   * worker that dies mid-send still burns an attempt and infrastructure
-   * redelivery cannot exceed the budget a customer was promised.
+   * Claiming deliberately does not consume an attempt. Most claims end without
+   * a provider call at all — the session is disconnected, or the per-session
+   * pacing window has not opened — and charging those to the customer's attempt
+   * budget would exhaust a notification in minutes without WhatsApp ever having
+   * been contacted. The budget is consumed by {@link beginAttempt} instead.
    */
   public async claimForDispatch(
     applicationId: string,
@@ -227,13 +256,7 @@ export class NotificationRepository {
   ): Promise<NotificationRecord | undefined> {
     const [claimed] = await this.database
       .update(notifications)
-      .set({
-        status: 'PROCESSING',
-        claimToken,
-        claimedAt: now,
-        attemptCount: sql`${notifications.attemptCount} + 1`,
-        updatedAt: now,
-      })
+      .set({ status: 'PROCESSING', claimToken, claimedAt: now, updatedAt: now })
       .where(
         and(
           eq(notifications.id, notificationId),
@@ -244,6 +267,116 @@ export class NotificationRepository {
       .returning();
 
     return claimed as NotificationRecord | undefined;
+  }
+
+  /**
+   * Consumes one attempt from the notification's budget.
+   *
+   * Called in the transaction that records the send attempt, which commits
+   * before the provider is contacted. That ordering is what bounds the number
+   * of times a message can reach WhatsApp: every provider call is preceded by a
+   * committed increment, so a crash, a job redelivery or a duplicated worker
+   * cannot exceed `maximumAttempts`.
+   *
+   * The claim token is part of the predicate, so a worker whose claim was
+   * reaped while it was still running cannot consume an attempt it no longer
+   * owns.
+   */
+  public async beginAttempt(
+    executor: QueryExecutor,
+    input: {
+      readonly applicationId: string;
+      readonly notificationId: string;
+      readonly claimToken: string;
+      readonly now: Date;
+    },
+  ): Promise<number | undefined> {
+    const [updated] = await executor
+      .update(notifications)
+      .set({ attemptCount: sql`${notifications.attemptCount} + 1`, updatedAt: input.now })
+      .where(
+        and(
+          eq(notifications.id, input.notificationId),
+          eq(notifications.applicationId, input.applicationId),
+          eq(notifications.claimToken, input.claimToken),
+          eq(notifications.status, 'PROCESSING'),
+        ),
+      )
+      .returning({ attemptCount: notifications.attemptCount });
+
+    return updated?.attemptCount;
+  }
+
+  /**
+   * Moves a scheduled notification into the queue once its time has come.
+   *
+   * The queue already holds the job with the right `startAfter`, so this is not
+   * a poller: it is the step that makes the status honest before a claim, since
+   * SCHEDULED is deliberately not a state a worker may dispatch from.
+   */
+  public async promoteScheduled(
+    applicationId: string,
+    notificationId: string,
+    now: Date,
+  ): Promise<NotificationRecord | undefined> {
+    const [promoted] = await this.database
+      .update(notifications)
+      .set({ status: 'QUEUED', updatedAt: now })
+      .where(
+        and(
+          eq(notifications.id, notificationId),
+          eq(notifications.applicationId, applicationId),
+          eq(notifications.status, 'SCHEDULED'),
+          lte(notifications.scheduledAt, now),
+        ),
+      )
+      .returning();
+
+    return promoted as NotificationRecord | undefined;
+  }
+
+  /**
+   * Returns notifications whose worker died holding the claim.
+   *
+   * Nothing else releases them: the queue's own expiry gives the job back, but
+   * the row would stay PROCESSING forever, and PROCESSING is the one state a
+   * claim cannot be taken from.
+   */
+  public async findStuckClaims(claimedBefore: Date, limit: number): Promise<NotificationRecord[]> {
+    const rows = await this.database
+      .select()
+      .from(notifications)
+      .where(
+        and(eq(notifications.status, 'PROCESSING'), lt(notifications.claimedAt, claimedBefore)),
+      )
+      .orderBy(notifications.claimedAt)
+      .limit(limit);
+
+    return rows as NotificationRecord[];
+  }
+
+  /**
+   * Returns notifications that are ready to send right now.
+   *
+   * The queue is the primary path; this is the repair path. A dispatch job can
+   * be lost — a queue table restored from a backup, a job deleted by hand — and
+   * without a second source of truth the notification would wait forever. The
+   * queue's exclusive policy makes re-enqueuing them free: a key that already
+   * has a live job silently accepts nothing.
+   */
+  public async findDueForDispatch(now: Date, limit: number): Promise<NotificationRecord[]> {
+    const retryIsDue = and(
+      eq(notifications.status, 'RETRYING'),
+      lte(notifications.nextAttemptAt, now),
+    );
+    const rows = await this.database
+      .select()
+      .from(notifications)
+      .where(or(eq(notifications.status, 'QUEUED'), retryIsDue))
+      .orderBy(notifications.createdAt)
+      .limit(limit);
+
+    return rows as NotificationRecord[];
   }
 
   /**
@@ -258,7 +391,7 @@ export class NotificationRepository {
       readonly notificationId: string;
       readonly expectedStatus: NotificationStatus;
       readonly nextStatus: NotificationStatus;
-      readonly changes: Partial<Record<string, unknown>>;
+      readonly changes: NotificationTransitionChanges;
       readonly now: Date;
     },
   ): Promise<NotificationRecord | undefined> {

@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { type PgBoss } from 'pg-boss';
 
-import { QUEUE_CLIENT } from '../tokens';
+import { APPLICATION_CONFIGURATION, QUEUE_CLIENT } from '../tokens';
 
 @Global()
 @Module({})
@@ -44,13 +44,23 @@ export class QueueModule implements OnApplicationShutdown {
   }
 
   private readonly queue: PgBoss;
+  private readonly configuration: ApplicationConfiguration;
 
-  public constructor(@Inject(QUEUE_CLIENT) queue: PgBoss) {
+  public constructor(
+    @Inject(QUEUE_CLIENT) queue: PgBoss,
+    @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
+  ) {
     this.queue = queue;
+    this.configuration = configuration;
   }
 
   public async onApplicationShutdown(): Promise<void> {
-    // Graceful: stop accepting new work, let in-flight handlers finish.
-    await this.queue.stop({ graceful: true, timeout: 30_000 });
+    // Graceful: stop accepting new work and let in-flight handlers finish. A
+    // job still running when the timeout expires is not lost — its claim is
+    // reaped and the notification is dispatched again.
+    await this.queue.stop({
+      graceful: true,
+      timeout: this.configuration.queue.shutdownTimeoutSeconds * 1000,
+    });
   }
 }

@@ -15,7 +15,10 @@ import { DatabaseHealthService } from './database-health.service';
 @Global()
 @Module({})
 export class DatabaseModule implements OnApplicationShutdown {
-  public static forConfiguration(configuration: ApplicationConfiguration): DynamicModule {
+  public static forConfiguration(
+    configuration: ApplicationConfiguration,
+    options: { readonly applicationName: string },
+  ): DynamicModule {
     return {
       module: this,
       providers: [
@@ -24,7 +27,7 @@ export class DatabaseModule implements OnApplicationShutdown {
           provide: DATABASE_CONNECTION,
           useFactory: (): DatabaseConnection => {
             const logger = createLogger({
-              serviceName: 'database',
+              serviceName: options.applicationName,
               level: configuration.observability.logLevel,
               format: configuration.observability.logFormat,
               nodeEnvironment: configuration.nodeEnvironment,
@@ -34,7 +37,9 @@ export class DatabaseModule implements OnApplicationShutdown {
               connectionUrl: configuration.database.applicationUrl,
               maximumPoolSize: configuration.database.maximumPoolSize,
               statementTimeoutMilliseconds: configuration.database.statementTimeoutMilliseconds,
-              applicationName: 'platform-api',
+              // Surfaces in pg_stat_activity, so a stuck query can be traced
+              // to the process that issued it.
+              applicationName: options.applicationName,
               onPoolError: (error) => {
                 logger.error(
                   { event: logEvents.healthDependencyDegraded, dependency: 'database', error },

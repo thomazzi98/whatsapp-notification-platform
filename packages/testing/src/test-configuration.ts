@@ -27,12 +27,17 @@ export function createTestConfiguration(
       maximumPoolSize: 4,
       statementTimeoutMilliseconds: 5000,
     },
-    queue: { schema: 'pgboss', concurrency: 2, pollingIntervalSeconds: 1 },
+    queue: {
+      schema: 'pgboss',
+      concurrency: 2,
+      pollingIntervalSeconds: 1,
+      shutdownTimeoutSeconds: 5,
+    },
+    delivery: { maximumLifetimeHours: 24, stuckClaimTimeoutSeconds: 300 },
     whatsAppProvider: {
       baseUrl: 'http://waha.invalid:3000',
       apiKey: 'a-test-waha-api-key',
       requestTimeoutMilliseconds: 5000,
-
       webhookPublicUrl: 'http://api.invalid:3000',
     },
     security: {

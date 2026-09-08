@@ -196,6 +196,79 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0))
 
+  apps/worker:
+    dependencies:
+      '@nestjs/common':
+        specifier: 'catalog:'
+        version: 11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
+      '@nestjs/core':
+        specifier: 'catalog:'
+        version: 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@platform/composition':
+        specifier: workspace:*
+        version: link:../../packages/composition
+      '@platform/configuration':
+        specifier: workspace:*
+        version: link:../../packages/configuration
+      '@platform/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@platform/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@platform/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
+      pg-boss:
+        specifier: 'catalog:'
+        version: 12.30.0
+      pino:
+        specifier: 'catalog:'
+        version: 10.3.1
+      reflect-metadata:
+        specifier: 'catalog:'
+        version: 0.2.2
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      zod:
+        specifier: 'catalog:'
+        version: 4.5.4
+    devDependencies:
+      '@nestjs/testing':
+        specifier: 'catalog:'
+        version: 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(reflect-metadata@0.2.2)(rxjs@7.8.2))
+      '@platform/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@platform/provider-whatsapp':
+        specifier: workspace:*
+        version: link:../../packages/provider-whatsapp
+      '@platform/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@platform/waha-stub':
+        specifier: workspace:*
+        version: link:../../tools/waha-stub
+      eslint:
+        specifier: 'catalog:'
+        version: 10.10.0(supports-color@7.2.0)
+      fastify:
+        specifier: 'catalog:'
+        version: 5.11.3
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.2
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.13
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0))
+
   packages/composition:
     dependencies:
       '@nestjs/common':
@@ -216,6 +289,9 @@ importers:
       '@platform/observability':
         specifier: workspace:*
         version: link:../observability
+      '@platform/provider-whatsapp':
+        specifier: workspace:*
+        version: link:../provider-whatsapp
       '@platform/queue':
         specifier: workspace:*
         version: link:../queue
@@ -412,6 +488,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
+      pg:
+        specifier: 'catalog:'
+        version: 8.23.0
       pg-boss:
         specifier: 'catalog:'
         version: 12.30.0
@@ -422,6 +501,9 @@ importers:
       '@platform/testing':
         specifier: workspace:*
         version: link:../testing
+      '@types/pg':
+        specifier: 'catalog:'
+        version: 8.23.1
       eslint:
         specifier: 'catalog:'
         version: 10.10.0(supports-color@7.2.0)

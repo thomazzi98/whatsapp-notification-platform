@@ -80,6 +80,19 @@ export const environmentSchema = z.object({
   QUEUE_POLLING_INTERVAL_SECONDS: positiveInteger
     .default(2)
     .meta({ description: 'How often a worker polls for newly available jobs.' }),
+  QUEUE_SHUTDOWN_TIMEOUT_SECONDS: positiveInteger.default(30).meta({
+    description:
+      'Time in-flight jobs are given to finish when the worker is asked to stop, before it exits anyway.',
+  }),
+
+  DELIVERY_MAXIMUM_LIFETIME_HOURS: positiveInteger.default(24).meta({
+    description:
+      'How long a notification may stay undelivered before it is failed. A message pending for a day is no longer the message the caller meant to send.',
+  }),
+  DELIVERY_STUCK_CLAIM_TIMEOUT_SECONDS: positiveInteger.default(300).meta({
+    description:
+      'How long a dispatch claim may be held before it is treated as abandoned by a crashed worker.',
+  }),
 
   WAHA_BASE_URL: z.url().meta({
     description: 'Base URL of the WAHA instance, reachable on the internal Docker network.',

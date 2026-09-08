@@ -1,6 +1,7 @@
 export {
   type ApplicationConfiguration,
   type DatabaseConfiguration,
+  type DeliveryConfiguration,
   type HttpConfiguration,
   type ObservabilityConfiguration,
   type QueueConfiguration,

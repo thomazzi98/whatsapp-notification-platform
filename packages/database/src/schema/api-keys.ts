@@ -43,7 +43,7 @@ export const apiKeys = pgTable(
       .where(sql`${table.revokedAt} is null`),
     check('api_keys_last_four_check', sql`length(${table.lastFour}) = 4`),
     // cardinality() returns 0 for an empty array, where array_length()
-    // returns NULL � and a CHECK constraint passes on NULL, so the obvious
+    // returns NULL — and a CHECK constraint passes on NULL, so the obvious
     // spelling of this rule would not reject an empty scope list.
     check('api_keys_scopes_not_empty_check', sql`cardinality(${table.scopes}) >= 1`),
   ],
