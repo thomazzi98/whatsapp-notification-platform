@@ -26,6 +26,7 @@ import {
 import { type FastifyReply } from 'fastify';
 
 import { ApiKeyGuard, RequireScopes } from '../../http/authentication/api-key.guard';
+import { ApiKeyRateLimitGuard } from '../../http/rate-limit/rate-limit.guard';
 import { toNotificationEventResponse, toNotificationResponse } from './notification-response';
 import { CurrentApiKey } from '../../http/authentication/authenticated-request';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
@@ -40,7 +41,9 @@ function toStatusList(
 }
 
 @Controller('v1/notifications')
-@UseGuards(ApiKeyGuard)
+// Order matters: authenticate first, then meter. An unauthenticated request has
+// no key to charge, and refusing it is cheaper than measuring it.
+@UseGuards(ApiKeyGuard, ApiKeyRateLimitGuard)
 export class NotificationsController {
   private readonly notificationCreation: CreateNotificationService;
   private readonly notifications: NotificationQueryService;

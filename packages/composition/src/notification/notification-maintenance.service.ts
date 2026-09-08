@@ -14,11 +14,13 @@ import { enqueueInTransaction, queueNames } from '@platform/queue';
 import { Inject, Injectable } from '@nestjs/common';
 import { type PgBoss } from 'pg-boss';
 
+import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION, QUEUE_CLIENT } from '../tokens';
 
 export interface MaintenanceReport {
   readonly reapedClaims: number;
   readonly requeuedNotifications: number;
+  readonly prunedRateLimitBuckets: number;
 }
 
 /**
@@ -48,6 +50,7 @@ export class NotificationMaintenanceService {
   private readonly identifiers: IdentifierGeneratorPort;
   private readonly queue: PgBoss;
   private readonly configuration: ApplicationConfiguration;
+  private readonly rateLimits: RateLimitService;
 
   public constructor(
     @Inject(DATABASE_CONNECTION) connection: DatabaseConnection,
@@ -55,6 +58,7 @@ export class NotificationMaintenanceService {
     @Inject(IDENTIFIER_GENERATOR_PORT) identifiers: IdentifierGeneratorPort,
     @Inject(QUEUE_CLIENT) queue: PgBoss,
     @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
+    rateLimits: RateLimitService,
   ) {
     this.connection = connection;
     this.notifications = new NotificationRepository(connection.database);
@@ -62,6 +66,7 @@ export class NotificationMaintenanceService {
     this.identifiers = identifiers;
     this.queue = queue;
     this.configuration = configuration;
+    this.rateLimits = rateLimits;
   }
 
   /**
@@ -172,7 +177,10 @@ export class NotificationMaintenanceService {
   public async runOnce(): Promise<MaintenanceReport> {
     const reapedClaims = await this.reapStuckClaims();
     const requeuedNotifications = await this.requeueDueNotifications();
+    // An hour is longer than any window the limiter uses, so a bucket older
+    // than that cannot influence a decision and only costs storage.
+    const prunedRateLimitBuckets = await this.rateLimits.prune(3600);
 
-    return { reapedClaims, requeuedNotifications };
+    return { reapedClaims, requeuedNotifications, prunedRateLimitBuckets };
   }
 }

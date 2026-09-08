@@ -2,6 +2,7 @@ import { type ApiKeyPrincipal, ApplicationService } from '@platform/composition'
 import { Controller, Get, UseGuards } from '@nestjs/common';
 
 import { ApiKeyGuard, RequireScopes } from '../../http/authentication/api-key.guard';
+import { ApiKeyRateLimitGuard } from '../../http/rate-limit/rate-limit.guard';
 import { CurrentApiKey } from '../../http/authentication/authenticated-request';
 
 interface CurrentApplicationResponse {
@@ -17,7 +18,7 @@ interface CurrentApplicationResponse {
  * allowed to do, without having to send a real notification to find out.
  */
 @Controller('v1/applications')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, ApiKeyRateLimitGuard)
 export class CurrentApplicationController {
   private readonly applications: ApplicationService;
 

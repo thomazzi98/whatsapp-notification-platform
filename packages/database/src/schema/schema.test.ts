@@ -13,6 +13,14 @@ const SNAKE_CASE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
  */
 const LOOKUP_TABLES = new Set(['notificationStatusTable', 'notificationStatusTransitions']);
 
+/**
+ * Rows with no history. A rate limit bucket holds one value that is overwritten
+ * on every request and deleted once it stops meaning anything, so recording
+ * when it first appeared would be a column nothing reads and every write pays
+ * for.
+ */
+const EPHEMERAL_TABLES = new Set(['rateLimitBuckets']);
+
 describe('schema naming', () => {
   it('exports every table the platform expects at this stage', () => {
     // Membership, not ordering: the export order carries no meaning.
@@ -27,6 +35,7 @@ describe('schema naming', () => {
         'notificationStatusTable',
         'notificationStatusTransitions',
         'organizations',
+        'rateLimitBuckets',
         'templates',
         'userSessions',
         'users',
@@ -63,7 +72,9 @@ describe('schema naming', () => {
   });
 
   it('records when every row was created, which the delivery timeline depends on', () => {
-    const lifecycleTables = tables.filter(([exportName]) => !LOOKUP_TABLES.has(exportName));
+    const lifecycleTables = tables.filter(
+      ([exportName]) => !LOOKUP_TABLES.has(exportName) && !EPHEMERAL_TABLES.has(exportName),
+    );
 
     for (const [exportName, table] of lifecycleTables) {
       const columnNames = new Set(getTableConfig(table).columns.map((column) => column.name));

@@ -85,6 +85,8 @@ export interface TestDatabaseHandle {
    * real threshold would put minutes of sleeping into the suite.
    */
   ageClaim: (notificationId: string, ageSeconds: number) => Promise<void>;
+  /** Narrows an application's allowance so a limit can be reached in a few calls. */
+  setRateLimit: (applicationId: string, requestsPerMinute: number, burst: number) => Promise<void>;
   insertWebhookDelivery: (input: WebhookDeliveryFixture) => Promise<string>;
   listWebhookDeliveries: (applicationId: string) => Promise<WebhookDeliveryRow[]>;
   /** Ages a callback past the window in which an unmatched receipt is retried. */
@@ -362,6 +364,13 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
         update webhook_deliveries
         set received_at = now() - make_interval(secs => ${ageSeconds})
         where id = ${deliveryId}
+      `);
+    },
+    setRateLimit: async (applicationId, requestsPerMinute, burst) => {
+      await connection.database.execute(sql`
+        update applications
+        set rate_limit_per_minute = ${requestsPerMinute}, rate_limit_burst = ${burst}
+        where id = ${applicationId}
       `);
     },
     ageClaim: async (notificationId, ageSeconds) => {

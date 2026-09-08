@@ -97,6 +97,17 @@ interface Tenant {
 let tenantCounter = 0;
 
 /**
+ * The allowance is a property of the application, so a test can make it small
+ * enough to reach rather than sending sixty requests to prove a limit exists.
+ */
+async function setRateLimit(
+  applicationId: string,
+  limits: { readonly perMinute: number; readonly burst: number },
+): Promise<void> {
+  await database.setRateLimit(applicationId, limits.perMinute, limits.burst);
+}
+
+/**
  * Builds a tenant through the real API rather than by writing rows, so the
  * fixtures exercise the same paths a customer would.
  */
@@ -491,5 +502,65 @@ describe('transactional enqueue through the API', () => {
     await createNotification(tenant, { recipient: 'not-a-number' });
 
     expect(await database.countAllDispatchJobs()).toBe(0);
+  });
+});
+
+describe('rate limiting the public API', () => {
+  it('reports the allowance on a successful response, so a caller can pace itself', async () => {
+    const tenant = await createTenant();
+
+    const response = await createNotification(tenant, {});
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers['ratelimit-limit']).toBeDefined();
+    expect(Number(response.headers['ratelimit-remaining'])).toBeGreaterThanOrEqual(0);
+  });
+
+  it('refuses once the allowance is spent, and says exactly how long to wait', async () => {
+    const tenant = await createTenant();
+    await setRateLimit(tenant.applicationId, { perMinute: 2, burst: 1 });
+
+    const responses = [];
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      responses.push(await createNotification(tenant, {}));
+    }
+    const refused = responses.find((response) => response.statusCode === 429);
+
+    expect(refused).toBeDefined();
+    // A number of seconds, not "some time during the next window".
+    expect(Number(refused?.headers['retry-after'])).toBeGreaterThan(0);
+    expect(refused?.body.detail).toContain('requests per minute');
+  });
+
+  it('spends one allowance without touching another application', async () => {
+    const throttled = await createTenant();
+    const untouched = await createTenant();
+    await setRateLimit(throttled.applicationId, { perMinute: 2, burst: 1 });
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await createNotification(throttled, {});
+    }
+
+    const spared = await createNotification(untouched, {});
+
+    expect(spared.statusCode).toBe(202);
+  });
+
+  it('throttles the sign-in endpoint by address, not by account', async () => {
+    // Ten attempts with a burst of five, so the eleventh is refused whichever
+    // address it names — an attacker walking a list of accounts is the case
+    // this exists for.
+    const responses = [];
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      responses.push(
+        await request({
+          method: 'POST',
+          url: '/dashboard/auth/login',
+          payload: { email: `nobody-${String(attempt)}@example.com`, password: 'wrong-password' },
+        }),
+      );
+    }
+
+    expect(responses.some((response) => response.statusCode === 429)).toBe(true);
   });
 });

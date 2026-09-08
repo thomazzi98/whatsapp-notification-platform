@@ -5,6 +5,7 @@ import {
   NotificationModule,
   ObservabilityModule,
   QueueModule,
+  RateLimitModule,
   RuntimeModule,
   TenancyModule,
   WebhookIngestionModule,
@@ -34,6 +35,7 @@ export class ApiModule {
         // The API only sends jobs; the worker is the process that supervises.
         QueueModule.forConfiguration(configuration, { supervise: false }),
         RuntimeModule,
+        RateLimitModule,
         AuthenticationModule,
         TenancyModule,
         NotificationModule,

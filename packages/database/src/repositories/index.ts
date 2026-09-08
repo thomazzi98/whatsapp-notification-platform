@@ -36,6 +36,11 @@ export {
   type SendAttemptRecord,
 } from './notification-send-attempt.repository';
 export { type OrganizationRecord, OrganizationRepository } from './organization.repository';
+export {
+  type RateLimitDecision,
+  type RateLimitPolicy,
+  RateLimitRepository,
+} from './rate-limit.repository';
 export { type SessionWithUser, UserSessionRepository } from './user-session.repository';
 export { type UserRecord, UserRepository } from './user.repository';
 export {

@@ -1,6 +1,7 @@
 // Record shapes are part of the contract of the services that return them, so
 // applications import them from here rather than reaching into the persistence
 // adapter directly.
+export type { RateLimitPolicy } from '@platform/database';
 export type {
   ApiKeyRecord,
   ApplicationRecord,
@@ -46,6 +47,12 @@ export {
 } from './notification/notification-query.service';
 export { WhatsAppProviderModule } from './provider/whatsapp-provider.module';
 export { QueueModule } from './queue/queue.module';
+export { RateLimitModule } from './rate-limit/rate-limit.module';
+export {
+  type RateLimitOutcome,
+  RateLimitService,
+  signInPolicy,
+} from './rate-limit/rate-limit.service';
 export { RuntimeModule } from './runtime/runtime.module';
 export { type ApiKeyPrincipal, ApiKeyService, type CreatedApiKey } from './tenancy/api-key.service';
 export { ApplicationService } from './tenancy/application.service';

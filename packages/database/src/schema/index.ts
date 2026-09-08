@@ -9,6 +9,7 @@ export {
   notificationStatusTransitions,
 } from './notifications';
 export { organizations } from './organizations';
+export { rateLimitBuckets } from './rate-limits';
 export { templates, type TemplateVariableDefinition } from './templates';
 export { userSessions } from './user-sessions';
 export { users } from './users';
