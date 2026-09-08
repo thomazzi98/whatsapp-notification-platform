@@ -16,6 +16,18 @@ allowBuilds:
   protobufjs: false
   ssh2: false
 
+# Forced across the whole tree, transitive dependencies included.
+overrides:
+  # GHSA-w2qp-rph6-63g4, GHSA-3m5p-2c4r-xxw2 and one further advisory, all fixed
+  # in 5.12.1. @nestjs/platform-fastify@11.2.3 depends on 5.11.3 exactly and has
+  # no newer release, so the override is the only way to be on a patched Fastify
+  # while still loading a single copy of it.
+  fastify: 5.12.3
+  # GHSA-67mh-4wv8-2f99. Reached only through drizzle-kit's legacy
+  # "@esbuild-kit" loader, which is a development dependency, but an advisory
+  # that is merely unreachable today is one nobody re-reads tomorrow.
+  esbuild: ^0.25.12
+
 # Versions are declared once here and referenced as "catalog:" by every
 # workspace package, so a shared dependency cannot drift between packages.
 catalog:
@@ -42,11 +54,10 @@ catalog:
   "@nestjs/core": 11.2.3
   "@nestjs/platform-fastify": 11.2.3
   "@nestjs/testing": 11.2.3
-  "@nestjs/swagger": 11.4.7
-  nestjs-zod: 5.5.0
-  # Pinned to the exact version platform-fastify depends on, so the
-  # process never loads two copies of Fastify.
-  fastify: 5.11.3
+  # One Fastify in the process, and it must be a patched one. The Nest adapter
+  # pins 5.11.3 exactly, which carries three advisories, so the override above
+  # lifts the whole tree to the patched release rather than leaving two copies.
+  fastify: 5.12.3
   "@fastify/cookie": 11.1.2
   reflect-metadata: 0.2.2
   rxjs: 7.8.2
