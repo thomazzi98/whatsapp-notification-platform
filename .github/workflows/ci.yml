@@ -89,6 +89,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install Node and pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # The compose file requires a provider key rather than defaulting one,
+      # because a WhatsApp provider running unauthenticated is a security
+      # problem rather than an inconvenience. Bake has to interpolate it too.
+      - name: Prepare the environment
+        run: pnpm setup:env
+
       - uses: docker/setup-buildx-action@v3
 
       # Built here rather than only in the end-to-end job, so a broken

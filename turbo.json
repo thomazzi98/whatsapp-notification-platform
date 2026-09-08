@@ -12,6 +12,11 @@
       "outputs": []
     },
     "lint": {
+      // Type-aware lint rules need the dependency types to exist. Without this
+      // a workspace import resolves to `any` and the rules that exist to catch
+      // unsafe values pass by seeing nothing — which is exactly what happened
+      // on a clean checkout while a warm dist made it look fine locally.
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "test": {

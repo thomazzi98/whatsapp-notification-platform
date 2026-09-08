@@ -212,7 +212,16 @@ services:
       # /ping is the unauthenticated probe. /health needs the key and reports on
       # disk rather than on whether WhatsApp is connected, which is not what a
       # container probe should be asking.
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/ping"]
+      #
+      # Node rather than curl or wget: the provider image ships neither, and a
+      # probe that cannot run reports a healthy container as unhealthy forever.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/ping').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
