@@ -9,11 +9,18 @@ import { type TestProject } from 'vitest/node';
  */
 let container: StartedPostgreSqlContainer | undefined;
 
+/**
+ * Two minutes is the library's default and it is not enough on Docker Desktop,
+ * where `initdb` on a cold cache regularly runs past it.
+ */
+const CONTAINER_STARTUP_TIMEOUT_MILLISECONDS = 300_000;
+
 export async function setup(project: TestProject): Promise<void> {
   container = await new PostgreSqlContainer('postgres:17-alpine')
     .withDatabase('notifications_test')
     .withUsername('platform_system')
     .withPassword('platform_system_password')
+    .withStartupTimeout(CONTAINER_STARTUP_TIMEOUT_MILLISECONDS)
     .start();
 
   project.provide('databaseUrl', container.getConnectionUri());

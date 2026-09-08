@@ -18,11 +18,20 @@ export interface StartedTestDatabase {
  * A container per test file is what makes these suites unbearable on Docker
  * Desktop; isolation comes from truncating between tests instead.
  */
+/**
+ * Two minutes is the library's default and it is not enough on Docker Desktop,
+ * where `initdb` on a cold cache regularly runs past it. A slow start is a slow
+ * start; failing the whole suite for it is what makes these suites feel
+ * unreliable when nothing is actually wrong.
+ */
+const CONTAINER_STARTUP_TIMEOUT_MILLISECONDS = 300_000;
+
 export async function startTestDatabase(migrationsFolder: string): Promise<StartedTestDatabase> {
   const container: StartedPostgreSqlContainer = await new PostgreSqlContainer('postgres:17-alpine')
     .withDatabase('notifications_test')
     .withUsername('platform_system')
     .withPassword('platform_system_password')
+    .withStartupTimeout(CONTAINER_STARTUP_TIMEOUT_MILLISECONDS)
     .start();
 
   const connectionUrl = container.getConnectionUri();
