@@ -109,6 +109,10 @@ export const environmentSchema = z.object({
     description: 'Base URL WAHA calls back with delivery events. Must be reachable from WAHA.',
     example: 'http://api:3000',
   }),
+  WAHA_WEBHOOK_TOLERANCE_SECONDS: positiveInteger.default(300).meta({
+    description:
+      'How far a callback timestamp may be from now before it is refused as a replay. A signature never expires on its own.',
+  }),
 
   SECURITY_API_KEY_PEPPER: base64Key(32).meta({
     description:

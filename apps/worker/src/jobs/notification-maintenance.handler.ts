@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { type ApplicationConfiguration } from '@platform/configuration';
-import { APPLICATION_CONFIGURATION, NotificationMaintenanceService } from '@platform/composition';
-import { createLogger, logEvents, runWithCorrelationContext } from '@platform/observability';
+import { LOGGER, NotificationMaintenanceService } from '@platform/composition';
+import { logEvents, runWithCorrelationContext } from '@platform/observability';
 import { Inject, Injectable } from '@nestjs/common';
 import { type Logger } from 'pino';
 
@@ -11,17 +10,9 @@ export class NotificationMaintenanceHandler {
   private readonly maintenance: NotificationMaintenanceService;
   private readonly logger: Logger;
 
-  public constructor(
-    maintenance: NotificationMaintenanceService,
-    @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
-  ) {
+  public constructor(maintenance: NotificationMaintenanceService, @Inject(LOGGER) logger: Logger) {
     this.maintenance = maintenance;
-    this.logger = createLogger({
-      serviceName: 'worker',
-      level: configuration.observability.logLevel,
-      format: configuration.observability.logFormat,
-      nodeEnvironment: configuration.nodeEnvironment,
-    });
+    this.logger = logger;
   }
 
   /**

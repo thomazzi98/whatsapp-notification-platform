@@ -39,6 +39,13 @@ export { type OrganizationRecord, OrganizationRepository } from './organization.
 export { type SessionWithUser, UserSessionRepository } from './user-session.repository';
 export { type UserRecord, UserRepository } from './user.repository';
 export {
+  type RecordWebhookDeliveryInput,
+  type WebhookDeliveryRecord,
+  WebhookDeliveryRepository,
+  type WebhookOutcome,
+  webhookOutcomes,
+} from './webhook-delivery.repository';
+export {
   type WhatsAppSessionRecord,
   WhatsAppSessionRepository,
 } from './whatsapp-session.repository';

@@ -31,6 +31,7 @@ export class WhatsAppSessionRepository {
   }
 
   public async insert(input: {
+    readonly id: string;
     readonly applicationId: string;
     readonly providerSessionName: string;
     readonly displayName: string;
@@ -69,6 +70,26 @@ export class WhatsAppSessionRepository {
     return found as WhatsAppSessionRecord | undefined;
   }
 
+  /**
+   * Finds a session by identifier alone.
+   *
+   * The tenant is deliberately absent: a provider callback carries only the
+   * identifier in its URL and proves itself with a signature, so there is no
+   * tenant in hand to scope by. Every other lookup keeps the tenant in its
+   * signature precisely so this one has to be written on purpose.
+   */
+  public async findByIdWithoutTenantScope(
+    sessionId: string,
+  ): Promise<WhatsAppSessionRecord | undefined> {
+    const [found] = await this.database
+      .select()
+      .from(whatsAppSessions)
+      .where(eq(whatsAppSessions.id, sessionId))
+      .limit(1);
+
+    return found as WhatsAppSessionRecord | undefined;
+  }
+
   public async findByProviderName(
     providerSessionName: string,
   ): Promise<WhatsAppSessionRecord | undefined> {
@@ -79,6 +100,24 @@ export class WhatsAppSessionRepository {
       .limit(1);
 
     return found as WhatsAppSessionRecord | undefined;
+  }
+
+  /**
+   * Removes a session whose creation at the provider failed.
+   *
+   * The row is written first so the provider session name is reserved before it
+   * is used, which means a failure has to be undone rather than ignored: a
+   * leftover row would occupy a name the next attempt needs.
+   */
+  public async delete(applicationId: string, sessionId: string): Promise<boolean> {
+    const deleted = await this.database
+      .delete(whatsAppSessions)
+      .where(
+        and(eq(whatsAppSessions.id, sessionId), eq(whatsAppSessions.applicationId, applicationId)),
+      )
+      .returning({ id: whatsAppSessions.id });
+
+    return deleted.length > 0;
   }
 
   public async recordStatus(

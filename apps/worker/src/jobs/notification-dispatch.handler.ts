@@ -1,10 +1,5 @@
-import { type ApplicationConfiguration } from '@platform/configuration';
-import {
-  APPLICATION_CONFIGURATION,
-  type DispatchResult,
-  DispatchNotificationService,
-} from '@platform/composition';
-import { createLogger, logEvents, runWithCorrelationContext } from '@platform/observability';
+import { type DispatchResult, DispatchNotificationService, LOGGER } from '@platform/composition';
+import { logEvents, runWithCorrelationContext } from '@platform/observability';
 import { notificationDispatchPayloadSchema } from '@platform/queue';
 import { Inject, Injectable } from '@nestjs/common';
 import { type Logger } from 'pino';
@@ -23,17 +18,9 @@ export class NotificationDispatchHandler {
   private readonly dispatcher: DispatchNotificationService;
   private readonly logger: Logger;
 
-  public constructor(
-    dispatcher: DispatchNotificationService,
-    @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
-  ) {
+  public constructor(dispatcher: DispatchNotificationService, @Inject(LOGGER) logger: Logger) {
     this.dispatcher = dispatcher;
-    this.logger = createLogger({
-      serviceName: 'worker',
-      level: configuration.observability.logLevel,
-      format: configuration.observability.logFormat,
-      nodeEnvironment: configuration.nodeEnvironment,
-    });
+    this.logger = logger;
   }
 
   /**

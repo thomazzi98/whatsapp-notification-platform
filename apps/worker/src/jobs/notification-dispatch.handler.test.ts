@@ -1,15 +1,12 @@
 import { type DispatchInput, type DispatchResult } from '@platform/composition';
-import { createTestConfiguration } from '@platform/testing';
 import { type Job } from 'pg-boss';
 import { describe, expect, it, vi } from 'vitest';
 
 import { NotificationDispatchHandler } from './notification-dispatch.handler';
 
-// Silenced: these tests deliberately exercise the paths that log errors, and
+// Silenced: these tests deliberately exercise the paths that log an error, and
 // the real output would bury a genuine failure.
-const configuration = createTestConfiguration('postgres://unused.invalid:5432/notifications', {
-  observability: { logLevel: 'fatal', logFormat: 'json', recipientSalt: 'unused' },
-});
+const silentLogger = { error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() };
 
 function createJob(data: unknown, signal = new AbortController().signal): Job<unknown> {
   return {
@@ -29,7 +26,7 @@ function createHandler(dispatch: (input: DispatchInput) => Promise<DispatchResul
   const spy = vi.fn(dispatch);
 
   return {
-    handler: new NotificationDispatchHandler({ dispatch: spy } as never, configuration),
+    handler: new NotificationDispatchHandler({ dispatch: spy } as never, silentLogger as never),
     dispatch: spy,
   };
 }

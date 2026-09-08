@@ -1,6 +1,6 @@
 import { type ApplicationConfiguration } from '@platform/configuration';
 import { createDatabaseConnection, type DatabaseConnection } from '@platform/database';
-import { createLogger, logEvents } from '@platform/observability';
+import { logEvents } from '@platform/observability';
 import {
   type DynamicModule,
   Global,
@@ -8,8 +8,9 @@ import {
   Module,
   type OnApplicationShutdown,
 } from '@nestjs/common';
+import { type Logger } from 'pino';
 
-import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION } from '../tokens';
+import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION, LOGGER } from '../tokens';
 import { DatabaseHealthService } from './database-health.service';
 
 @Global()
@@ -25,15 +26,9 @@ export class DatabaseModule implements OnApplicationShutdown {
         { provide: APPLICATION_CONFIGURATION, useValue: configuration },
         {
           provide: DATABASE_CONNECTION,
-          useFactory: (): DatabaseConnection => {
-            const logger = createLogger({
-              serviceName: options.applicationName,
-              level: configuration.observability.logLevel,
-              format: configuration.observability.logFormat,
-              nodeEnvironment: configuration.nodeEnvironment,
-            });
-
-            return createDatabaseConnection({
+          inject: [LOGGER],
+          useFactory: (logger: Logger): DatabaseConnection =>
+            createDatabaseConnection({
               connectionUrl: configuration.database.applicationUrl,
               maximumPoolSize: configuration.database.maximumPoolSize,
               statementTimeoutMilliseconds: configuration.database.statementTimeoutMilliseconds,
@@ -46,8 +41,7 @@ export class DatabaseModule implements OnApplicationShutdown {
                   'A pooled database client failed',
                 );
               },
-            });
-          },
+            }),
         },
         DatabaseHealthService,
       ],

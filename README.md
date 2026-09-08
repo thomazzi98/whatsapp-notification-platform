@@ -70,14 +70,23 @@ docker compose up
 run does not require hand-crafting base64 keys. `.env.example` itself is generated from the
 configuration schema, and a test fails if the two drift apart.
 
-Compose brings up Postgres, a one-shot `migrate` service that applies migrations and exits, and
-the API. Ports are published on the loopback interface only, and shifted off the defaults so this
-stack cannot collide with another local project:
+Compose brings up Postgres, a one-shot `migrate` service that applies migrations and exits, the
+API, and the worker that delivers notifications. Ports are published on the loopback interface
+only, and shifted off the defaults so this stack cannot collide with another local project:
 
 | Service  | Address                 |
 | -------- | ----------------------- |
 | API      | `http://127.0.0.1:3100` |
 | Postgres | `127.0.0.1:55432`       |
+
+Add `--profile stub` to start a deterministic stand-in for WhatsApp on `127.0.0.1:3200`. It answers
+to the same hostname as the real provider, so the whole pipeline — connect, send, deliver, receive
+the delivery receipt — can be exercised without a phone, a scannable code, or an account that can
+be banned.
+
+```bash
+docker compose --profile stub up
+```
 
 The API exposes two probes with deliberately different meanings. `/health` is liveness and checks
 no dependency at all — a liveness probe that touches the database turns a brief Postgres outage
@@ -97,7 +106,8 @@ corepack pnpm test               # unit tests, no external services
 corepack pnpm test:integration   # starts Postgres via Testcontainers
 ```
 
-Other tasks: `pnpm lint`, `pnpm typecheck`, `pnpm verify:layers`, `pnpm format`.
+Other tasks: `pnpm lint`, `pnpm typecheck`, `pnpm verify:layers`, `pnpm verify:packaging`,
+`pnpm format`.
 
 ## Code style
 

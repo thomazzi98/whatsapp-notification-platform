@@ -1,6 +1,6 @@
 import { type ApplicationConfiguration } from '@platform/configuration';
-import { APPLICATION_CONFIGURATION, QUEUE_CLIENT } from '@platform/composition';
-import { createLogger, logEvents } from '@platform/observability';
+import { APPLICATION_CONFIGURATION, LOGGER, QUEUE_CLIENT } from '@platform/composition';
+import { logEvents } from '@platform/observability';
 import { queueNames } from '@platform/queue';
 import { Inject, Injectable, type OnApplicationBootstrap } from '@nestjs/common';
 import { type Job, type JobResult, type PgBoss } from 'pg-boss';
@@ -8,6 +8,7 @@ import { type Logger } from 'pino';
 
 import { NotificationDispatchHandler } from './notification-dispatch.handler';
 import { NotificationMaintenanceHandler } from './notification-maintenance.handler';
+import { WebhookProcessHandler } from './webhook-process.handler';
 
 /**
  * How often the repair pass runs.
@@ -31,6 +32,7 @@ export class JobRunnerService implements OnApplicationBootstrap {
   private readonly configuration: ApplicationConfiguration;
   private readonly dispatch: NotificationDispatchHandler;
   private readonly maintenance: NotificationMaintenanceHandler;
+  private readonly webhooks: WebhookProcessHandler;
   private readonly logger: Logger;
 
   public constructor(
@@ -38,17 +40,15 @@ export class JobRunnerService implements OnApplicationBootstrap {
     @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
     dispatch: NotificationDispatchHandler,
     maintenance: NotificationMaintenanceHandler,
+    webhooks: WebhookProcessHandler,
+    @Inject(LOGGER) logger: Logger,
   ) {
     this.queue = queue;
     this.configuration = configuration;
     this.dispatch = dispatch;
     this.maintenance = maintenance;
-    this.logger = createLogger({
-      serviceName: 'worker',
-      level: configuration.observability.logLevel,
-      format: configuration.observability.logFormat,
-      nodeEnvironment: configuration.nodeEnvironment,
-    });
+    this.webhooks = webhooks;
+    this.logger = logger;
   }
 
   /**
@@ -81,7 +81,7 @@ export class JobRunnerService implements OnApplicationBootstrap {
         // would drag four healthy ones into a needless retry.
         perJobResults: true,
       },
-      (jobs: Job<unknown>[]) => this.runBatch(jobs),
+      (jobs: Job<unknown>[]) => this.settleEach(jobs, (job) => this.dispatch.handle(job)),
     );
 
     await this.queue.work(
@@ -92,6 +92,18 @@ export class JobRunnerService implements OnApplicationBootstrap {
 
         return Promise.resolve();
       },
+    );
+
+    // Callbacks are cheap and latency matters: a delivery receipt that lands
+    // seconds after the message did is what makes the timeline feel live.
+    await this.queue.work(
+      queueNames.webhookProcess,
+      {
+        batchSize: this.configuration.queue.concurrency,
+        pollingIntervalSeconds: this.configuration.queue.pollingIntervalSeconds,
+        perJobResults: true,
+      },
+      (jobs: Job<unknown>[]) => this.settleEach(jobs, (job) => this.webhooks.handle(job)),
     );
 
     await this.queue.work(
@@ -118,8 +130,11 @@ export class JobRunnerService implements OnApplicationBootstrap {
    * batch. One notification hitting a permanent provider error would then drag
    * four healthy ones into a retry they did not need.
    */
-  public async runBatch(jobs: Job<unknown>[]): Promise<JobResult[]> {
-    const settled = await Promise.allSettled(jobs.map((job) => this.dispatch.handle(job)));
+  public async settleEach(
+    jobs: Job<unknown>[],
+    handle: (job: Job<unknown>) => Promise<void>,
+  ): Promise<JobResult[]> {
+    const settled = await Promise.allSettled(jobs.map((job) => handle(job)));
 
     return settled.map((outcome, index) => {
       const job = jobs[index];
@@ -131,7 +146,7 @@ export class JobRunnerService implements OnApplicationBootstrap {
 
       this.logger.error(
         { event: logEvents.queueJobFailed, jobId: id, error: outcome.reason },
-        'A dispatch job threw and will be retried',
+        'A job threw and will be retried',
       );
 
       return { id, status: 'failed' };

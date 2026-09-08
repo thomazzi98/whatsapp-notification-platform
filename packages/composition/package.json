@@ -26,6 +26,7 @@
     "@platform/queue": "workspace:*",
     "@platform/security": "workspace:*",
     "pg-boss": "catalog:",
+    "pino": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:"
   },

@@ -85,6 +85,10 @@ export interface TestDatabaseHandle {
    * real threshold would put minutes of sleeping into the suite.
    */
   ageClaim: (notificationId: string, ageSeconds: number) => Promise<void>;
+  insertWebhookDelivery: (input: WebhookDeliveryFixture) => Promise<string>;
+  listWebhookDeliveries: (applicationId: string) => Promise<WebhookDeliveryRow[]>;
+  /** Ages a callback past the window in which an unmatched receipt is retried. */
+  ageWebhookDelivery: (deliveryId: string, ageSeconds: number) => Promise<void>;
   /** Dispatch jobs queued for one notification. */
   countDispatchJobs: (notificationId: string) => Promise<number>;
   countAllDispatchJobs: () => Promise<number>;
@@ -112,6 +116,13 @@ export interface NotificationFixture {
   readonly scheduledAt?: Date;
   readonly nextAttemptAt?: Date;
   readonly createdAt?: Date;
+  /**
+   * Set together with a SENT status. The transition trigger refuses shortcuts
+   * on update — correctly — so a fixture that needs an already-sent
+   * notification has to insert it that way.
+   */
+  readonly providerMessageId?: string;
+  readonly sentAt?: Date;
 }
 
 export interface NotificationRow {
@@ -126,6 +137,24 @@ export interface NotificationRow {
   readonly sentAt: Date | null;
   readonly failedAt: Date | null;
   readonly claimToken: string | null;
+}
+
+export interface WebhookDeliveryFixture {
+  readonly applicationId: string;
+  readonly whatsAppSessionId: string;
+  readonly providerEventId: string;
+  readonly eventType: string;
+  readonly providerSessionName: string;
+  readonly payload: Record<string, unknown>;
+}
+
+export interface WebhookDeliveryRow {
+  readonly id: string;
+  readonly eventType: string;
+  readonly providerEventId: string;
+  readonly processedAt: Date | null;
+  readonly outcome: string | null;
+  readonly outcomeDetail: string | null;
 }
 
 export interface SendAttemptRow {
@@ -236,13 +265,14 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
         insert into notifications
           (id, application_id, whatsapp_session_id, status, recipient_phone_number,
            rendered_body, maximum_attempts, attempt_count, scheduled_at, next_attempt_at,
-           created_at)
+           created_at, provider_message_id, sent_at)
         values (gen_random_uuid(), ${input.applicationId}, ${input.whatsAppSessionId},
                 ${input.status ?? 'QUEUED'}, ${input.recipient ?? '+5511999990000'},
                 ${input.body ?? 'Your order has shipped.'},
                 ${input.maximumAttempts ?? 5}, ${input.attemptCount ?? 0},
                 ${input.scheduledAt ?? null}, ${input.nextAttemptAt ?? null},
-                ${input.createdAt ?? new Date()})
+                ${input.createdAt ?? new Date()}, ${input.providerMessageId ?? null},
+                ${input.sentAt ?? null})
         returning id
       `,
         'notification',
@@ -300,6 +330,38 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
         insert into notification_send_attempts
           (id, application_id, notification_id, attempt_number, request_started_at)
         values (gen_random_uuid(), ${applicationId}, ${notificationId}, ${attemptNumber}, now())
+      `);
+    },
+    insertWebhookDelivery: async (input) =>
+      insertReturningId(
+        sql`
+        insert into webhook_deliveries
+          (id, application_id, whatsapp_session_id, provider_event_id, event_type,
+           provider_session_name, payload)
+        values (gen_random_uuid(), ${input.applicationId}, ${input.whatsAppSessionId},
+                ${input.providerEventId}, ${input.eventType}, ${input.providerSessionName},
+                ${JSON.stringify(input.payload)}::jsonb)
+        returning id
+      `,
+        'webhook delivery',
+      ),
+    listWebhookDeliveries: async (applicationId) => {
+      const result = await connection.database.execute<
+        WebhookDeliveryRow & Record<string, unknown>
+      >(sql`
+        select id, event_type as "eventType", provider_event_id as "providerEventId",
+               processed_at as "processedAt", outcome, outcome_detail as "outcomeDetail"
+        from webhook_deliveries where application_id = ${applicationId}
+        order by received_at
+      `);
+
+      return result.rows.map((row) => ({ ...row, processedAt: toDate(row.processedAt) }));
+    },
+    ageWebhookDelivery: async (deliveryId, ageSeconds) => {
+      await connection.database.execute(sql`
+        update webhook_deliveries
+        set received_at = now() - make_interval(secs => ${ageSeconds})
+        where id = ${deliveryId}
       `);
     },
     ageClaim: async (notificationId, ageSeconds) => {

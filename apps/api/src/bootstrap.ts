@@ -6,6 +6,7 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 
 import { ApiModule } from './api.module';
 import { registerCorrelationHook } from './http/correlation/correlation.hook';
+import { registerRawBodyParser } from './http/raw-body';
 import { ProblemDetailsFilter } from './http/filters/problem-details.filter';
 
 export interface RunningApi {
@@ -33,10 +34,19 @@ export async function bootstrapApi(configuration: ApplicationConfiguration): Pro
   const application = await NestFactory.create<NestFastifyApplication>(
     ApiModule.forConfiguration(configuration),
     adapter,
-    { bufferLogs: true, logger: false },
+    {
+      bufferLogs: true,
+      logger: false,
+      // The API registers its own JSON parser, because the webhook routes need
+      // the exact bytes that arrived and Fastify allows only one parser per
+      // content type. Letting the framework add its own would make that a
+      // startup error rather than a choice.
+      bodyParser: false,
+    },
   );
 
   await application.register(fastifyCookie);
+  registerRawBodyParser(adapter.getInstance());
   registerCorrelationHook(adapter.getInstance(), logger);
   application.useGlobalFilters(new ProblemDetailsFilter(logger, configuration.http.publicBaseUrl));
   application.enableShutdownHooks();

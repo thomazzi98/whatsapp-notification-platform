@@ -2,8 +2,10 @@ import { type ApplicationConfiguration } from '@platform/configuration';
 import {
   DatabaseModule,
   NotificationDeliveryModule,
+  ObservabilityModule,
   QueueModule,
   RuntimeModule,
+  WebhookProcessingModule,
   WhatsAppProviderModule,
 } from '@platform/composition';
 import { type DynamicModule, Module } from '@nestjs/common';
@@ -11,6 +13,7 @@ import { type DynamicModule, Module } from '@nestjs/common';
 import { JobRunnerService } from './jobs/job-runner.service';
 import { NotificationDispatchHandler } from './jobs/notification-dispatch.handler';
 import { NotificationMaintenanceHandler } from './jobs/notification-maintenance.handler';
+import { WebhookProcessHandler } from './jobs/webhook-process.handler';
 
 @Module({})
 export class WorkerModule {
@@ -18,6 +21,7 @@ export class WorkerModule {
     return {
       module: this,
       imports: [
+        ObservabilityModule.forConfiguration(configuration, { serviceName: 'worker' }),
         DatabaseModule.forConfiguration(configuration, { applicationName: 'platform-worker' }),
         // The worker is the process that maintains the queue tables and owns
         // the cron schedules. Running that in more than one place would have
@@ -26,8 +30,14 @@ export class WorkerModule {
         RuntimeModule,
         WhatsAppProviderModule.forConfiguration(configuration),
         NotificationDeliveryModule,
+        WebhookProcessingModule,
       ],
-      providers: [NotificationDispatchHandler, NotificationMaintenanceHandler, JobRunnerService],
+      providers: [
+        NotificationDispatchHandler,
+        NotificationMaintenanceHandler,
+        WebhookProcessHandler,
+        JobRunnerService,
+      ],
     };
   }
 }

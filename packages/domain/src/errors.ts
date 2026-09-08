@@ -20,6 +20,8 @@ export const domainErrorCodes = [
   'invalid_schedule',
   'no_whatsapp_session',
   'whatsapp_session_not_found',
+  'whatsapp_session_not_scannable',
+  'whatsapp_provider_unavailable',
   'notification_not_found',
   'notification_not_cancellable',
   'idempotency_key_reused',

@@ -30,6 +30,7 @@ describe('schema naming', () => {
         'templates',
         'userSessions',
         'users',
+        'webhookDeliveries',
         'whatsAppSessions',
       ]),
     );
@@ -69,7 +70,8 @@ describe('schema naming', () => {
       const hasTimestamp =
         columnNames.has('created_at') ||
         columnNames.has('occurred_at') ||
-        columnNames.has('request_started_at');
+        columnNames.has('request_started_at') ||
+        columnNames.has('received_at');
 
       expect(hasTimestamp, `${exportName} has a creation timestamp`).toBe(true);
     }

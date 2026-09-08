@@ -35,3 +35,12 @@ export {
   type RegisterRequest,
   registerRequestSchema,
 } from './authentication';
+export {
+  type QrCodeResponse,
+  qrCodeResponseSchema,
+  type WhatsAppSessionCreationRequest,
+  whatsAppSessionCreationRequestSchema,
+  whatsAppSessionListResponseSchema,
+  type WhatsAppSessionResponse,
+  whatsAppSessionResponseSchema,
+} from './whatsapp-sessions';

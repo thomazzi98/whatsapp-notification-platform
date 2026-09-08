@@ -32,6 +32,7 @@ export interface WhatsAppProviderConfiguration {
   readonly apiKey: string;
   readonly requestTimeoutMilliseconds: number;
   readonly webhookPublicUrl: string;
+  readonly webhookToleranceSeconds: number;
 }
 
 export interface SecurityConfiguration {
@@ -99,6 +100,7 @@ export function toApplicationConfiguration(
       apiKey: environment.WAHA_API_KEY,
       requestTimeoutMilliseconds: environment.WAHA_REQUEST_TIMEOUT_MILLISECONDS,
       webhookPublicUrl: environment.WAHA_WEBHOOK_PUBLIC_URL,
+      webhookToleranceSeconds: environment.WAHA_WEBHOOK_TOLERANCE_SECONDS,
     },
     security: {
       apiKeyPepper: environment.SECURITY_API_KEY_PEPPER,

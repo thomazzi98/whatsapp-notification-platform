@@ -6,6 +6,7 @@ export type {
   ApplicationRecord,
   NotificationEventRecord,
   NotificationRecord,
+  WhatsAppSessionRecord,
 } from '@platform/database';
 export {
   type AuthenticatedPrincipal,
@@ -49,4 +50,23 @@ export { RuntimeModule } from './runtime/runtime.module';
 export { type ApiKeyPrincipal, ApiKeyService, type CreatedApiKey } from './tenancy/api-key.service';
 export { ApplicationService } from './tenancy/application.service';
 export { TenancyModule } from './tenancy/tenancy.module';
-export { APPLICATION_CONFIGURATION, DATABASE_CONNECTION, QUEUE_CLIENT } from './tokens';
+export { ObservabilityModule } from './observability/observability.module';
+export { APPLICATION_CONFIGURATION, DATABASE_CONNECTION, LOGGER, QUEUE_CLIENT } from './tokens';
+export {
+  type IngestWebhookInput,
+  type IngestWebhookResult,
+  IngestWebhookService,
+  type WebhookIngestionOutcome,
+  webhookIngestionOutcomes,
+} from './webhook/ingest-webhook.service';
+export {
+  type ProcessWebhookResult,
+  ProcessWebhookService,
+} from './webhook/process-webhook.service';
+export { WebhookProcessingModule } from './webhook/webhook-processing.module';
+export { WebhookIngestionModule } from './webhook/webhook.module';
+export {
+  type CreateWhatsAppSessionInput,
+  WhatsAppSessionService,
+} from './whatsapp/whatsapp-session.service';
+export { WhatsAppSessionModule } from './whatsapp/whatsapp.module';

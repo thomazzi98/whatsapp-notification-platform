@@ -42,6 +42,7 @@ export {
   type RetryPolicy,
   sessionNotReadyMinimumDelaySeconds,
 } from './notification/retry-policy';
+export { type ProviderEvent, toDeliveryAcknowledgement } from './provider/provider-event';
 export {
   canSessionSend,
   type CreateSessionInput,

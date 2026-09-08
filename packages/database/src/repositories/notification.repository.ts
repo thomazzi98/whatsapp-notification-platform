@@ -155,6 +155,32 @@ export class NotificationRepository {
     return found as NotificationRecord | undefined;
   }
 
+  /**
+   * Resolves an inbound acknowledgement to the notification it concerns.
+   *
+   * Keyed by session as well as message identifier, because the provider's
+   * identifiers are only unique within one WhatsApp account — and because a
+   * callback authenticated for one session must never reach another tenant's
+   * notification.
+   */
+  public async findByProviderMessageId(
+    whatsAppSessionId: string,
+    providerMessageId: string,
+  ): Promise<NotificationRecord | undefined> {
+    const [found] = await this.database
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.whatsAppSessionId, whatsAppSessionId),
+          eq(notifications.providerMessageId, providerMessageId),
+        ),
+      )
+      .limit(1);
+
+    return found as NotificationRecord | undefined;
+  }
+
   public async listEvents(
     applicationId: string,
     notificationId: string,

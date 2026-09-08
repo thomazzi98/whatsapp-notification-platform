@@ -5,6 +5,7 @@ import {
   DispatchNotificationService,
   NotificationMaintenanceService,
   NotificationDeliveryModule,
+  ObservabilityModule,
   QueueModule,
   RuntimeModule,
   WhatsAppProviderModule,
@@ -56,12 +57,14 @@ async function buildContext(overrides: Partial<ApplicationConfiguration> = {}): 
       apiKey,
       requestTimeoutMilliseconds: 1500,
       webhookPublicUrl: 'http://api.invalid:3000',
+      webhookToleranceSeconds: 300,
     },
     ...overrides,
   });
 
   moduleReference = await Test.createTestingModule({
     imports: [
+      ObservabilityModule.forConfiguration(configuration, { serviceName: 'worker-test' }),
       DatabaseModule.forConfiguration(configuration, { applicationName: 'worker-test' }),
       QueueModule.forConfiguration(configuration, { supervise: false }),
       RuntimeModule,

@@ -39,6 +39,7 @@ export function createTestConfiguration(
       apiKey: 'a-test-waha-api-key',
       requestTimeoutMilliseconds: 5000,
       webhookPublicUrl: 'http://api.invalid:3000',
+      webhookToleranceSeconds: 300,
     },
     security: {
       apiKeyPepper: base64Key(),

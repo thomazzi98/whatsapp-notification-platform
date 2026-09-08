@@ -152,6 +152,9 @@ importers:
       '@platform/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@platform/provider-whatsapp':
+        specifier: workspace:*
+        version: link:../../packages/provider-whatsapp
       '@platform/security':
         specifier: workspace:*
         version: link:../../packages/security
@@ -180,6 +183,9 @@ importers:
       '@platform/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@platform/waha-stub':
+        specifier: workspace:*
+        version: link:../../tools/waha-stub
       eslint:
         specifier: 'catalog:'
         version: 10.10.0(supports-color@7.2.0)
@@ -301,6 +307,9 @@ importers:
       pg-boss:
         specifier: 'catalog:'
         version: 12.30.0
+      pino:
+        specifier: 'catalog:'
+        version: 10.3.1
       reflect-metadata:
         specifier: 'catalog:'
         version: 0.2.2
