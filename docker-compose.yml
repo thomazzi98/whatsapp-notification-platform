@@ -91,6 +91,28 @@ services:
       retries: 6
       start_period: 15s
 
+  # The dashboard, and the single origin everything is reached through.
+  #
+  # A static bundle behind a file server that also forwards the API paths, so
+  # the session cookie stays first-party and there is no CORS layer and no
+  # compiled-in API URL anywhere.
+  web:
+    build:
+      context: .
+      dockerfile: tools/docker/web.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   # Same image as the API, different command. It is a separate service because
   # sending to WhatsApp is slow and paced, and a burst of API traffic must not
   # be able to starve delivery — nor the reverse.
@@ -118,9 +140,55 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # The real WhatsApp provider. Exactly one of this and waha-stub runs, chosen by
+  # COMPOSE_PROFILES in .env, because both answer to the hostname `waha`.
+  waha:
+    profiles: ["whatsapp"]
+    # Pinned to a digest-stable tag rather than `latest`: the provider tracks
+    # WhatsApp's own changes closely, and an unannounced upgrade here would
+    # change the acknowledgement semantics the delivery rules are built on.
+    image: devlikeapro/waha:noweb-2026.8.2
+    restart: unless-stopped
+    environment:
+      # NOWEB is a websocket engine with no headless browser, so it starts in
+      # seconds and avoids an entire class of Chromium failures. The namespace
+      # defaults to the engine name, which means changing this forces every
+      # connection to be paired again.
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY must be set; run pnpm setup:env}
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+    # Only needed by the Chromium-based engine, and free to set: a container
+    # that runs out of shared memory fails in ways that look like WhatsApp
+    # problems rather than like a container limit.
+    shm_size: "1gb"
+    volumes:
+      - waha-sessions:/app/.sessions
+      - waha-media:/app/.media
+    networks:
+      default:
+        aliases:
+          - waha
+    # Deliberately not published to the network. The provider holds a paired
+    # WhatsApp account and its API has no per-tenant authorization, so it is
+    # infrastructure this platform speaks to, never a boundary anyone else may
+    # reach. Bound to loopback only so an operator can still inspect it.
+    ports:
+      - "127.0.0.1:3201:3000"
+    healthcheck:
+      # /ping is the unauthenticated probe. /health needs the key and reports on
+      # disk rather than on whether WhatsApp is connected, which is not what a
+      # container probe should be asking.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # Pairing state is restored at boot, which takes appreciably longer than
+      # an empty start.
+      start_period: 60s
+
   # A deterministic stand-in for WAHA, so the delivery pipeline can be exercised
   # without a phone, a scannable code, or an account that can be banned.
-  # Started only with: docker compose --profile stub up
+  # Started with: COMPOSE_PROFILES=stub docker compose up
   waha-stub:
     profiles: ["stub"]
     build:
@@ -156,3 +224,8 @@ services:
 
 volumes:
   postgres-data:
+  # The provider image declares no volumes of its own, so without these the
+  # pairing is lost on every `docker compose down` and somebody has to find a
+  # phone again.
+  waha-sessions:
+  waha-media:

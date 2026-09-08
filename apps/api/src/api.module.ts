@@ -16,6 +16,7 @@ import { type DynamicModule, Module } from '@nestjs/common';
 import { ApiKeysController } from './dashboard-api/api-keys/api-keys.controller';
 import { ApplicationsController } from './dashboard-api/applications/applications.controller';
 import { AuthenticationController } from './dashboard-api/authentication/authentication.controller';
+import { DashboardNotificationsController } from './dashboard-api/notifications/dashboard-notifications.controller';
 import { HealthController } from './health/health.controller';
 import { CurrentApplicationController } from './public-api/applications/current-application.controller';
 import { NotificationsController } from './public-api/notifications/notifications.controller';
@@ -49,6 +50,7 @@ export class ApiModule {
         ApplicationsController,
         ApiKeysController,
         WhatsAppSessionsController,
+        DashboardNotificationsController,
         CurrentApplicationController,
         NotificationsController,
         WhatsAppWebhookController,

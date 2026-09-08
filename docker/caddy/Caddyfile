@@ -1,0 +1,59 @@
+# One origin for the dashboard and the API.
+#
+# This is what lets the session cookie stay first-party: SameSite=Lax does its
+# job, there is no CORS layer anywhere, and the browser bundle has no API base
+# URL compiled into it. A dashboard on its own origin would need all three, and
+# each is a place for a security control to be quietly relaxed.
+
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	encode zstd gzip
+
+	# Everything the API owns, forwarded untouched. The webhook path is here
+	# too: the provider calls it from outside, and it must reach the API
+	# without the SPA fallback swallowing it into an index.html.
+	handle /v1/* {
+		reverse_proxy api:3000
+	}
+	handle /dashboard/* {
+		reverse_proxy api:3000
+	}
+	handle /webhooks/* {
+		reverse_proxy api:3000
+	}
+	handle /health {
+		reverse_proxy api:3000
+	}
+	handle /ready {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		root * /srv
+		# Hashed asset filenames are immutable by construction, so they are
+		# cached hard; index.html never is, or a deploy would be invisible
+		# until every browser happened to revalidate.
+		@immutable path /assets/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+
+		# Client-side routing: any path the file server does not recognise is a
+		# route the application knows, not a 404.
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		# The dashboard loads nothing from anywhere else, so the policy can say
+		# exactly that rather than enumerate exceptions.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		-Server
+	}
+}

@@ -1,15 +1,18 @@
+import { type UserRole } from '@platform/domain';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
 import { type Database } from '../connection';
-import { userSessions, users } from '../schema';
+import { organizations, userSessions, users } from '../schema';
 
 export interface SessionWithUser {
   readonly sessionId: string;
   readonly userId: string;
   readonly organizationId: string;
+  readonly organizationName: string;
+  readonly organizationSlug: string;
   readonly email: string;
   readonly name: string;
-  readonly role: string;
+  readonly role: UserRole;
   readonly status: string;
   readonly idleExpiresAt: Date;
   readonly absoluteExpiresAt: Date;
@@ -56,6 +59,8 @@ export class UserSessionRepository {
         sessionId: userSessions.id,
         userId: users.id,
         organizationId: users.organizationId,
+        organizationName: organizations.name,
+        organizationSlug: organizations.slug,
         email: users.email,
         name: users.name,
         role: users.role,
@@ -65,6 +70,10 @@ export class UserSessionRepository {
       })
       .from(userSessions)
       .innerJoin(users, eq(users.id, userSessions.userId))
+      // Joined rather than fetched separately: the dashboard shows which
+      // organization a session belongs to on every screen, and a second round
+      // trip for two columns on the hot authentication path is not worth it.
+      .innerJoin(organizations, eq(organizations.id, users.organizationId))
       .where(
         and(
           eq(userSessions.tokenHash, tokenHash),
@@ -75,7 +84,9 @@ export class UserSessionRepository {
       )
       .limit(1);
 
-    return found;
+    // The role column is constrained to the domain's roles by a database check,
+    // which the query builder's `text` type cannot express.
+    return found as SessionWithUser | undefined;
   }
 
   /**

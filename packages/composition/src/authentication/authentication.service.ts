@@ -5,8 +5,7 @@ import {
   UserRepository,
   UserSessionRepository,
 } from '@platform/database';
-import { type ClockPort, DomainError } from '@platform/domain';
-import { CLOCK_PORT } from '@platform/domain';
+import { CLOCK_PORT, type ClockPort, DomainError, type UserRole } from '@platform/domain';
 import {
   generateSessionToken,
   hashPassword,
@@ -20,9 +19,11 @@ import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION } from '../tokens';
 export interface AuthenticatedPrincipal {
   readonly userId: string;
   readonly organizationId: string;
+  readonly organizationName: string;
+  readonly organizationSlug: string;
   readonly email: string;
   readonly name: string;
-  readonly role: string;
+  readonly role: UserRole;
   readonly sessionId: string;
 }
 
@@ -138,7 +139,9 @@ export class AuthenticationService {
     return this.establishSession(
       {
         userId: user.id,
-        organizationId: user.organizationId,
+        organizationId: organization.id,
+        organizationName: organization.name,
+        organizationSlug: organization.slug,
         email: user.email,
         name: user.name,
         role: user.role,
@@ -185,10 +188,17 @@ export class AuthenticationService {
 
     await this.users.recordSuccessfulLogin(user.id, now);
 
+    const organization = await this.organizations.findById(user.organizationId);
+    if (organization === undefined) {
+      throw invalidCredentials;
+    }
+
     return this.establishSession(
       {
         userId: user.id,
-        organizationId: user.organizationId,
+        organizationId: organization.id,
+        organizationName: organization.name,
+        organizationSlug: organization.slug,
         email: user.email,
         name: user.name,
         role: user.role,
@@ -225,6 +235,8 @@ export class AuthenticationService {
     return {
       userId: found.userId,
       organizationId: found.organizationId,
+      organizationName: found.organizationName,
+      organizationSlug: found.organizationSlug,
       email: found.email,
       name: found.name,
       role: found.role,

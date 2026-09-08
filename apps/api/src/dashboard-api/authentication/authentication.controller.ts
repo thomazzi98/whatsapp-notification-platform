@@ -6,6 +6,7 @@ import {
   type EstablishedSession,
 } from '@platform/composition';
 import {
+  type AuthenticatedUser,
   type LoginRequest,
   loginRequestSchema,
   type RegisterRequest,
@@ -30,14 +31,13 @@ import { deriveCsrfToken } from '../../http/authentication/csrf';
 import { DashboardSessionGuard } from '../../http/authentication/dashboard-session.guard';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
 
+/**
+ * Shaped by the published contract rather than by a local interface, so the
+ * dashboard's view of a session cannot drift from what this endpoint actually
+ * sends — which is exactly what a second declaration here allowed.
+ */
 interface SessionResponse {
-  readonly user: {
-    readonly id: string;
-    readonly email: string;
-    readonly name: string;
-    readonly role: string;
-    readonly organizationId: string;
-  };
+  readonly user: AuthenticatedUser;
   readonly csrfToken: string;
 }
 
@@ -61,7 +61,11 @@ export class AuthenticationController {
         email: principal.email,
         name: principal.name,
         role: principal.role,
-        organizationId: principal.organizationId,
+        organization: {
+          id: principal.organizationId,
+          name: principal.organizationName,
+          slug: principal.organizationSlug,
+        },
       },
       csrfToken: deriveCsrfToken(principal.sessionId, this.configuration.security.apiKeyPepper),
     };

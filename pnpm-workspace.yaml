@@ -56,3 +56,20 @@ catalog:
 
   # Queue
   pg-boss: 12.30.0
+
+  # Dashboard. React 19 and Vite 8 are current; React Router is used in its
+  # library mode as a single page application, because the dashboard has no
+  # server rendering need and a second Node process next to the API would make
+  # "which one owns the session" an open question.
+  react: 19.2.8
+  react-dom: 19.2.8
+  "@types/react": 19.2.18
+  "@types/react-dom": 19.2.7
+  react-router: 8.3.1
+  "@tanstack/react-query": 5.102.8
+  vite: 8.2.2
+  "@vitejs/plugin-react": 6.1.1
+  # The Vite plugin is the supported path for Tailwind 4; the PostCSS pipeline
+  # is the legacy one.
+  tailwindcss: 4.3.3
+  "@tailwindcss/vite": 4.3.3

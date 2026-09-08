@@ -1,0 +1,36 @@
+{
+  "name": "@platform/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard for connecting WhatsApp, sending notifications and inspecting their delivery.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "dev": "vite",
+    "preview": "vite preview",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@platform/contracts": "workspace:*",
+    "@platform/domain": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "catalog:"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

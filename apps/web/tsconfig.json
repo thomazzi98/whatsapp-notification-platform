@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The browser has no CommonJS and no Node globals, so this is the one
+    // package that departs from the shared module settings rather than
+    // pretending to share them.
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false,
+    // Off on purpose, and only here. With it on, `import { type Thing }` is
+    // preserved as an empty side-effect import, which drags the entire server
+    // package into the browser bundle for the sake of a type that was erased.
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "eslint.config.mjs"]
+}

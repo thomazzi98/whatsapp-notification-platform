@@ -74,19 +74,27 @@ Compose brings up Postgres, a one-shot `migrate` service that applies migrations
 API, and the worker that delivers notifications. Ports are published on the loopback interface
 only, and shifted off the defaults so this stack cannot collide with another local project:
 
-| Service  | Address                 |
-| -------- | ----------------------- |
-| API      | `http://127.0.0.1:3100` |
-| Postgres | `127.0.0.1:55432`       |
+| Service   | Address                 |
+| --------- | ----------------------- |
+| Dashboard | `http://127.0.0.1:8080` |
+| API       | `http://127.0.0.1:3100` |
+| Postgres  | `127.0.0.1:55432`       |
 
-Add `--profile stub` to start a deterministic stand-in for WhatsApp on `127.0.0.1:3200`. It answers
-to the same hostname as the real provider, so the whole pipeline — connect, send, deliver, receive
-the delivery receipt — can be exercised without a phone, a scannable code, or an account that can
-be banned.
+The dashboard and the API answer on one origin — `8080` serves the built bundle and forwards
+`/v1`, `/dashboard` and `/webhooks` to the API. That is what keeps the session cookie first-party,
+removes the need for CORS entirely, and leaves the browser bundle with no API URL compiled into it.
+Port `3100` reaches the API directly, which is convenient for `curl` and for the API-key surface.
 
-```bash
-docker compose --profile stub up
-```
+`COMPOSE_PROFILES` in `.env` chooses which WhatsApp provider starts. `setup:env` writes
+`whatsapp`, which runs the real provider — the one that needs a phone to pair. Setting it to
+`stub` instead runs a deterministic stand-in on `127.0.0.1:3200`, so the whole pipeline —
+connect, send, deliver, receive the delivery receipt — can be exercised without a phone, a
+scannable code, or an account that can be banned. Exactly one of the two runs, because both
+answer to the same hostname.
+
+The provider is not published to the network. It holds a paired WhatsApp account and its own API
+has no per-tenant authorization, so it is infrastructure this platform speaks to rather than a
+boundary anyone else may reach.
 
 The API exposes two probes with deliberately different meanings. `/health` is liveness and checks
 no dependency at all — a liveness probe that touches the database turns a brief Postgres outage

@@ -1,3 +1,4 @@
+import { authenticatedUserSchema } from '@platform/contracts';
 import {
   connectToTestDatabase,
   createTestConfiguration,
@@ -145,6 +146,27 @@ describe('registration and sign in', () => {
     expect(response.statusCode).toBe(201);
     expect(response.sessionCookie).toContain('wnp_session=');
     expect(response.body.csrfToken).toBeTypeOf('string');
+  });
+
+  it('returns a session that matches the published contract', async () => {
+    const response = await request({
+      method: 'POST',
+      url: '/dashboard/auth/register',
+      payload: {
+        organizationName: 'Contract check',
+        name: 'Rafael',
+        email: 'contract-check@example.com',
+        password: 'a-long-enough-password',
+      },
+    });
+
+    // Parsed with the schema the dashboard is written against, rather than
+    // spot-checked field by field. A response that merely looks right is how
+    // the two sides came to disagree about the shape of a user in the first
+    // place — the contract promised an organization object the API never sent.
+    const parsed = authenticatedUserSchema.safeParse(response.body.user);
+
+    expect(parsed.error?.issues ?? []).toEqual([]);
   });
 
   it('sets the session cookie as httpOnly with a lax same-site policy', async () => {

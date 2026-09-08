@@ -1,9 +1,7 @@
 import {
   type ApiKeyPrincipal,
   CreateNotificationService,
-  type NotificationEventRecord,
   NotificationQueryService,
-  type NotificationRecord,
 } from '@platform/composition';
 import {
   type NotificationCreationRequest,
@@ -28,44 +26,9 @@ import {
 import { type FastifyReply } from 'fastify';
 
 import { ApiKeyGuard, RequireScopes } from '../../http/authentication/api-key.guard';
+import { toNotificationEventResponse, toNotificationResponse } from './notification-response';
 import { CurrentApiKey } from '../../http/authentication/authenticated-request';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
-
-function toResponse(record: NotificationRecord): NotificationResponse {
-  return {
-    id: record.id,
-    status: record.status,
-    recipient: record.recipientPhoneNumber,
-    body: record.renderedBody,
-    whatsAppSessionId: record.whatsAppSessionId,
-    scheduledAt: record.scheduledAt?.toISOString() ?? null,
-    attemptCount: record.attemptCount,
-    maximumAttempts: record.maximumAttempts,
-    nextAttemptAt: record.nextAttemptAt?.toISOString() ?? null,
-    providerMessageId: record.providerMessageId,
-    sentAt: record.sentAt?.toISOString() ?? null,
-    deliveredAt: record.deliveredAt?.toISOString() ?? null,
-    readAt: record.readAt?.toISOString() ?? null,
-    failedAt: record.failedAt?.toISOString() ?? null,
-    failureCode: record.failureCode,
-    failureReason: record.failureReason,
-    metadata: record.metadata,
-    createdAt: record.createdAt.toISOString(),
-    updatedAt: record.updatedAt.toISOString(),
-  };
-}
-
-function toEventResponse(record: NotificationEventRecord): NotificationEventResponse {
-  return {
-    id: record.id,
-    eventType: record.eventType,
-    fromStatus: record.fromStatus,
-    toStatus: record.toStatus,
-    attemptNumber: record.attemptNumber,
-    payload: record.payload,
-    occurredAt: record.occurredAt.toISOString(),
-  };
-}
 
 function toStatusList(
   status: NotificationStatus | NotificationStatus[] | undefined,
@@ -128,7 +91,7 @@ export class NotificationsController {
       void reply.header('idempotent-replayed', 'true');
     }
 
-    return toResponse(result.notification);
+    return toNotificationResponse(result.notification);
   }
 
   @Get()
@@ -152,7 +115,7 @@ export class NotificationsController {
     });
 
     return {
-      data: result.items.map((record) => toResponse(record)),
+      data: result.items.map((record) => toNotificationResponse(record)),
       nextCursor: result.nextCursor,
     };
   }
@@ -165,7 +128,7 @@ export class NotificationsController {
   ): Promise<NotificationResponse> {
     const record = await this.notifications.getOrFail(principal.applicationId, notificationId);
 
-    return toResponse(record);
+    return toNotificationResponse(record);
   }
 
   @Get(':notificationId/events')
@@ -176,7 +139,7 @@ export class NotificationsController {
   ): Promise<{ data: NotificationEventResponse[] }> {
     const events = await this.notifications.listEvents(principal.applicationId, notificationId);
 
-    return { data: events.map((record) => toEventResponse(record)) };
+    return { data: events.map((record) => toNotificationEventResponse(record)) };
   }
 
   @Post(':notificationId/cancel')
@@ -188,6 +151,6 @@ export class NotificationsController {
   ): Promise<NotificationResponse> {
     const record = await this.notifications.cancel(principal.applicationId, notificationId);
 
-    return toResponse(record);
+    return toNotificationResponse(record);
   }
 }
