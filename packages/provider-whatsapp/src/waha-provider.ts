@@ -23,7 +23,6 @@ export interface WahaProviderOptions {
   readonly apiKey: string;
   readonly requestTimeoutMilliseconds: number;
   /** Events the platform subscribes to when it creates a session. */
-  readonly webhookEvents?: readonly string[];
 }
 
 const DEFAULT_WEBHOOK_EVENTS = ['session.status', 'message.ack', 'state.change'] as const;
@@ -168,7 +167,7 @@ export class WahaProvider implements WhatsAppProviderPort {
           webhooks: [
             {
               url: input.webhookUrl,
-              events: [...(this.options.webhookEvents ?? DEFAULT_WEBHOOK_EVENTS)],
+              events: [...DEFAULT_WEBHOOK_EVENTS],
               hmac: { key: input.webhookSigningKey },
               retries: { policy: 'exponential', attempts: 5, delaySeconds: 2 },
             },
@@ -325,17 +324,6 @@ export class WahaProvider implements WhatsAppProviderPort {
     }
 
     return succeeded({ providerMessageId: normalizeProviderMessageId(parsed.data) });
-  }
-
-  public async isReachable(): Promise<boolean> {
-    try {
-      const response = await fetch(new URL('/ping', this.options.baseUrl), {
-        signal: AbortSignal.timeout(this.options.requestTimeoutMilliseconds),
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
   }
 }
 

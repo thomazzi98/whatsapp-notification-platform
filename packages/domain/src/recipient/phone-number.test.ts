@@ -5,7 +5,6 @@ import {
   isValidPhoneNumber,
   normalizePhoneNumber,
   parsePhoneNumber,
-  toProviderChatIdentifier,
 } from './phone-number';
 
 describe('normalizePhoneNumber', () => {
@@ -73,11 +72,5 @@ describe('parsePhoneNumber', () => {
 
   it('never guesses a country for a national number', () => {
     expect(() => parsePhoneNumber('(11) 99999-8888')).toThrow(InvalidPhoneNumberError);
-  });
-});
-
-describe('toProviderChatIdentifier', () => {
-  it('builds the provider chat identifier from an E.164 number', () => {
-    expect(toProviderChatIdentifier('+5511999998888')).toBe('5511999998888@c.us');
   });
 });

@@ -73,7 +73,6 @@ export {
   maskPhoneNumberForLog,
   normalizePhoneNumber,
   parsePhoneNumber,
-  toProviderChatIdentifier,
 } from './recipient/phone-number';
 export {
   type ParsedTemplate,

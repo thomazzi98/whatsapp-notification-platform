@@ -106,7 +106,6 @@ export interface WhatsAppProviderPort {
     phoneNumber: string,
   ) => Promise<ProviderResult<ResolvedRecipient>>;
   sendTextMessage: (input: SendTextMessageInput) => Promise<ProviderResult<SentMessage>>;
-  isReachable: () => Promise<boolean>;
 }
 
 export const WHATSAPP_PROVIDER_PORT = Symbol('WhatsAppProviderPort');

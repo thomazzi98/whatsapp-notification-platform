@@ -424,22 +424,6 @@ describe('failure classification against a real server', () => {
   });
 });
 
-describe('reachability', () => {
-  it('reports a running provider as reachable', async () => {
-    await expect(provider.isReachable()).resolves.toBe(true);
-  });
-
-  it('reports an unreachable provider without throwing', async () => {
-    const unreachable = new WahaProvider({
-      baseUrl: await findClosedPortUrl(),
-      apiKey,
-      requestTimeoutMilliseconds: 500,
-    });
-
-    await expect(unreachable.isReachable()).resolves.toBe(false);
-  });
-});
-
 /**
  * A port nothing is listening on, obtained by binding one and letting it go.
  *

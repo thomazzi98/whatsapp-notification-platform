@@ -4,7 +4,6 @@ export const queueNames = {
   notificationDispatch: 'notification.dispatch',
   notificationDeadLetter: 'notification.dispatch.dead',
   webhookProcess: 'webhook.process',
-  whatsAppSessionPoll: 'whatsapp.session.poll',
   maintenanceReconcile: 'maintenance.reconcile',
 } as const;
 
@@ -62,12 +61,6 @@ export const queueDefinitions: readonly Queue[] = [
     retryDelay: 5,
     retryBackoff: true,
     retentionSeconds: 60 * 60 * 24 * 7,
-  },
-  {
-    name: queueNames.whatsAppSessionPoll,
-    expireInSeconds: 60,
-    retryLimit: 1,
-    retentionSeconds: 60 * 60 * 24,
   },
   {
     name: queueNames.maintenanceReconcile,

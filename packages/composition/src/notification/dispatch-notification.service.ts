@@ -14,6 +14,7 @@ import {
   WhatsAppSessionRepository,
 } from '@platform/database';
 import {
+  canSessionSend,
   CLOCK_PORT,
   type ClockPort,
   computeNextAttemptAt,
@@ -765,7 +766,7 @@ export class DispatchNotificationService {
       );
     }
 
-    if (session.status !== 'WORKING') {
+    if (!canSessionSend(session.status)) {
       // Not a delivery failure: a human has to reconnect WhatsApp. It costs no
       // attempt, so a disconnection of any length is survivable and the backlog
       // flows again the moment the connection returns.

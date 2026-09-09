@@ -47,16 +47,6 @@ export function parsePhoneNumber(value: string): string {
   return normalized;
 }
 
-/**
- * The provider's own chat identifier format. It is built here only for tests
- * and for display; the dispatch path always uses the identifier the provider
- * returns from its contact lookup, because national numbering rules — notably
- * the Brazilian ninth digit — make a locally constructed identifier unreliable.
- */
-export function toProviderChatIdentifier(e164PhoneNumber: string): string {
-  return `${e164PhoneNumber.replace('+', '')}@c.us`;
-}
-
 const VISIBLE_PREFIX_DIGITS = 2;
 const VISIBLE_SUFFIX_DIGITS = 4;
 
