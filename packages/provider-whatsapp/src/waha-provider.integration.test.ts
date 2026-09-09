@@ -198,6 +198,25 @@ describe('recipient resolution', () => {
       expect(result.failure.classification).toBe('RETRYABLE');
     }
   });
+
+  it.each([
+    ['unauthorized', 'provider_unauthorized'],
+    ['invalid_request', 'provider_invalid_request'],
+  ])('keeps a %s lookup permanent rather than relabelling it retryable', async (mode, code) => {
+    await createConnectedSession();
+    await forceFailureMode(mode);
+
+    const result = await provider.resolveRecipient('default', '+5511999998888');
+
+    expect(result.outcome).toBe('failed');
+    if (result.outcome === 'failed') {
+      // A rejected key and a malformed request are both hopeless without a
+      // human. Relabelling them here retried the lookup on the backoff curve
+      // for the whole delivery window and never alerted anyone.
+      expect(result.failure.code).toBe(code);
+      expect(result.failure.classification).toBe('PERMANENT');
+    }
+  });
 });
 
 describe('sending', () => {

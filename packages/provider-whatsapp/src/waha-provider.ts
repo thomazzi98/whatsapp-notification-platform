@@ -5,6 +5,7 @@ import {
   type ProviderQrCode,
   type ProviderResult,
   type ProviderSession,
+  isRetryable,
   normalizeProviderMessageId,
   type ResolvedRecipient,
   type SendTextMessageInput,
@@ -262,6 +263,14 @@ export class WahaProvider implements WhatsAppProviderPort {
     });
 
     if (response.outcome === 'failed') {
+      // A permanent failure keeps the code it was classified with. Relabelling
+      // everything here as retryable meant a rejected API key or a missing
+      // session -- both hopeless without a human -- were retried on the lookup
+      // for the whole delivery window instead of failing at the first attempt.
+      if (!isRetryable(response.failure)) {
+        return failed(response.failure);
+      }
+
       // Distinguished from a recipient that is genuinely not on WhatsApp: this
       // one is retryable, that one is permanent.
       return failed(
