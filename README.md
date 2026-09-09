@@ -61,6 +61,7 @@ delivered. Watch the rest happen on the notification's detail page.
 | [Runbook](docs/runbook.md)             | Operating it: connecting a number, diagnosing, backups, rotation    |
 | [Security](docs/security.md)           | Threat model, controls, and what a review found and fixed           |
 | [Performance](docs/performance.md)     | Where the time goes, what the indexes are for, measured numbers     |
+| [Verification](docs/verification.md)   | Which claims are proven, which are modelled, and which are gaps     |
 
 The API describes itself at `/v1/openapi.json`, generated from the same schemas
 that validate the requests.
