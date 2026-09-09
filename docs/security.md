@@ -196,13 +196,42 @@ resolves workspace imports to source rather than to built output. Both reported
 success while seeing nothing before that mapping existed, which is the failure
 mode to watch for in any static check: it does not announce itself.
 
-Two things are asserted by review rather than by a test. The constant-time
+One thing is asserted by review rather than by a test. The constant-time
 comparison in the API key check is a property of the primitive chosen, and
 nothing mechanically stops someone replacing `timingSafeEqual` with `equals`.
-And nothing pins `withTenantScope` into the request path: because every
-repository already filters by tenant, removing the wrapper would leave the
-suite green, and only the database-level isolation tests would still prove the
-policies themselves work.
+
+`withTenantScope` used to be the second. Nothing pinned it into the request
+path, and that was worse than it sounded: the policy predicate begins
+`current_user <> 'platform_tenant'`, so it constrains that role and no other.
+The whole database layer is conditional on the request path having entered it.
+Remove the wrapper and a `/v1` request runs as the login role, which holds full
+DML on every table — row level security is not a second line of defence then,
+it is switched off. Nothing noticed, because every repository filters by tenant
+anyway, so no answer changed.
+
+The role switch is unobservable except through the privileges it confers, so
+that is what the test makes observable.
+`apps/api/src/public-api/tenant-scope.integration.test.ts` serves `/v1` through
+a login role that is a **non-inheriting** member of `platform_tenant` and holds
+nothing on the four tables the scoped path touches. Authentication, the rate
+limiter and the application read all still work, because those run before the
+scope and keep their grants. Everything after it can only succeed if
+`SET LOCAL ROLE` actually ran — and, because the policy then applies, only if
+the application id was set too.
+
+Each was verified by planting the failure. Removing both statements turns nine
+request-path tests red; removing only `set_config` turns the same nine red
+through the policy instead of through privileges; bypassing one service leaves
+exactly the tests for that route failing. Ten further tests check the instrument
+itself — that the role really holds no privilege on any withheld table, and that
+its membership really does not inherit — so the suite cannot pass by being
+pointed at a role that could serve the request anyway.
+
+Production is not this strict, and deliberately so. `platform_application`
+holds its own grants and inherits `platform_tenant`, because the dashboard and
+the worker share that pool and legitimately span applications. Converging the
+two would mean a second pool for the public API, and a `GRANT ... WITH INHERIT
+FALSE`; it is a real option, not a small one.
 
 ## Reporting
 
