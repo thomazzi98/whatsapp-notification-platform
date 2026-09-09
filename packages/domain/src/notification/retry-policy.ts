@@ -43,10 +43,6 @@ export function computeRetryDelaySeconds(
   return half + random.integerBetween(0, cappedDelay - half);
 }
 
-export function hasAttemptsRemaining(policy: RetryPolicy, attemptCount: number): boolean {
-  return attemptCount < policy.maximumAttempts;
-}
-
 export function computeNextAttemptAt(
   policy: RetryPolicy,
   attemptNumber: number,

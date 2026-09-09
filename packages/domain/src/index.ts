@@ -38,7 +38,6 @@ export {
   computeNextAttemptAt,
   computeRetryDelaySeconds,
   defaultRetryPolicy,
-  hasAttemptsRemaining,
   type RetryPolicy,
   sessionNotReadyMinimumDelaySeconds,
 } from './notification/retry-policy';

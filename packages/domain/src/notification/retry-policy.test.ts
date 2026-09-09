@@ -5,7 +5,6 @@ import {
   computeNextAttemptAt,
   computeRetryDelaySeconds,
   defaultRetryPolicy,
-  hasAttemptsRemaining,
   type RetryPolicy,
   sessionNotReadyMinimumDelaySeconds,
 } from './retry-policy';
@@ -66,18 +65,6 @@ describe('computeRetryDelaySeconds', () => {
     expect(computeRetryDelaySeconds(defaultRetryPolicy, 1, lowestRandom)).toBeGreaterThanOrEqual(
       30,
     );
-  });
-});
-
-describe('hasAttemptsRemaining', () => {
-  it('allows attempts below the maximum', () => {
-    expect(hasAttemptsRemaining(defaultRetryPolicy, 0)).toBe(true);
-    expect(hasAttemptsRemaining(defaultRetryPolicy, 4)).toBe(true);
-  });
-
-  it('stops at the maximum', () => {
-    expect(hasAttemptsRemaining(defaultRetryPolicy, 5)).toBe(false);
-    expect(hasAttemptsRemaining(defaultRetryPolicy, 6)).toBe(false);
   });
 });
 
