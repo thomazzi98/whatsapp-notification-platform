@@ -37,7 +37,27 @@ function buildTransport(format: LogFormat): LoggerOptions['transport'] {
  * line -- including the host and the role it connects as. Everything an
  * operator can act on is in these five fields.
  */
+/**
+ * The same bound applied to a plain object. Ten fields is more than any real
+ * failure payload carries and far less than a driver's internals.
+ */
+const maximumSerializedFields = 10;
+
 function serializeError(error: unknown): Record<string, unknown> {
+  if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
+    // pg-boss emits a plain object rather than an Error, and `String()` renders
+    // that as "[object Object]": a line that reports a failure and says nothing
+    // whatsoever about it, at the moment somebody is reading logs to find out.
+    // Primitives only, for the same reason the Error branch drops `client`: a
+    // nested value on one of these is the emitting library's internals, and
+    // that is what turned a log line into kilobytes in the first place.
+    const fields = Object.entries(error as Record<string, unknown>)
+      .filter(([, value]) => typeof value !== 'object' && typeof value !== 'function')
+      .slice(0, maximumSerializedFields);
+
+    return { type: 'object', ...Object.fromEntries(fields) };
+  }
+
   if (!(error instanceof Error)) {
     return { message: String(error) };
   }

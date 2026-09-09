@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 
 import { App } from './app';
+import { RouteFocus } from './components/route-focus';
 import './styles.css';
 
 const rootElement = document.querySelector('#root');
@@ -28,7 +29,9 @@ createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <RouteFocus>
+          <App />
+        </RouteFocus>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

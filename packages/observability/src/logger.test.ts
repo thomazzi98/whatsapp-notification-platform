@@ -192,6 +192,37 @@ describe('logging an error', () => {
     expect(logged.client).toBeUndefined();
   });
 
+  it('reports what a thrown plain object actually said', () => {
+    const { logger, lines } = createCapturedLogger();
+    // Exactly what pg-boss emits when a worker is stopped mid-flight. It is not
+    // an Error, so the serializer used to render the whole thing as
+    // "[object Object]" and the operator learned only that something failed.
+    const failure = { queue: 'notification.dispatch', reason: 'wip', jobs: 3 };
+
+    logger.error({ error: failure }, 'The queue client reported a failure');
+
+    const [line] = lines();
+    const logged = line?.error as Record<string, unknown>;
+    expect(logged.message).not.toBe('[object Object]');
+    expect(logged.queue).toBe('notification.dispatch');
+    expect(logged.reason).toBe('wip');
+    expect(logged.jobs).toBe(3);
+  });
+
+  it('does not copy a whole driver in through the plain-object path', () => {
+    const { logger, lines } = createCapturedLogger();
+    const failure = Object.fromEntries(
+      Array.from({ length: 40 }, (unused, index) => [`field${String(index)}`, index]),
+    );
+
+    logger.error({ error: failure }, 'Something emitted a large object');
+
+    const [line] = lines();
+    const logged = line?.error as Record<string, unknown>;
+    // The ten fields plus the type that says why they are there.
+    expect(Object.keys(logged)).toHaveLength(11);
+  });
+
   it('keeps a cause, because that is usually the real reason', () => {
     const { logger, lines } = createCapturedLogger();
     const failure = new Error('Failed query', { cause: new Error('permission denied') });
