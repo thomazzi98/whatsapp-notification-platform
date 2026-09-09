@@ -4,6 +4,7 @@ import {
   NotificationQueryService,
 } from '@platform/composition';
 import {
+  idempotencyKeySchema,
   type NotificationCreationRequest,
   notificationCreationRequestSchema,
   type NotificationEventResponse,
@@ -31,6 +32,11 @@ import { toNotificationEventResponse, toNotificationResponse } from './notificat
 import { CurrentApiKey } from '../../http/authentication/authenticated-request';
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
 import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
+
+const idempotencyKeyPipe = new ZodValidationPipe(
+  idempotencyKeySchema.optional(),
+  'Idempotency-Key header',
+);
 
 function toStatusList(
   status: NotificationStatus | NotificationStatus[] | undefined,
@@ -71,9 +77,15 @@ export class NotificationsController {
     @CurrentApiKey() principal: ApiKeyPrincipal,
     @Body(new ZodValidationPipe(notificationCreationRequestSchema))
     body: NotificationCreationRequest,
-    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers('idempotency-key') suppliedIdempotencyKey: string | undefined,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<NotificationResponse> {
+    // Nest's @Headers takes no pipe, so the same validator is applied by hand
+    // rather than by adding a second way to reject a field. Without it an empty
+    // or over-long key reached the insert and surfaced as a 500, against a
+    // bound the document already advertised.
+    const idempotencyKey = idempotencyKeyPipe.transform(suppliedIdempotencyKey);
+
     const result = await this.notificationCreation.create({
       applicationId: principal.applicationId,
       recipient: body.recipient,

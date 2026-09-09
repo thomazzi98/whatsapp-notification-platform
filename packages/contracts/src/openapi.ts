@@ -2,6 +2,7 @@ import { notificationStatuses } from '@platform/domain';
 import { z } from 'zod';
 
 import {
+  idempotencyKeySchema,
   notificationCreationRequestSchema,
   notificationEventResponseSchema,
   notificationListResponseSchema,
@@ -33,13 +34,48 @@ const problemSchema = {
     status: { type: 'integer' },
     detail: { type: 'string' },
     instance: { type: 'string' },
+    correlationId: {
+      type: 'string',
+      description: 'Quote this when reporting a failure; it identifies the request in the logs.',
+    },
+    errors: {
+      type: 'array',
+      description: 'Present on a validation failure: which field was rejected, and why.',
+      items: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          code: { type: 'string' },
+          message: { type: 'string' },
+        },
+        required: ['path', 'code', 'message'],
+      },
+    },
   },
-  required: ['type', 'title', 'status'],
+  required: ['type', 'title', 'status', 'detail'],
 } as const;
 
 const problemResponse = (description: string): Record<string, unknown> => ({
   description,
   content: { 'application/problem+json': { schema: { $ref: '#/components/schemas/Problem' } } },
+});
+
+/**
+ * The callback answers the provider in its own small shape rather than RFC 9457.
+ * WAHA reads nothing but the status code, and a problem document would describe
+ * platform internals to a caller that is not a tenant.
+ */
+const callbackResponse = (description: string): Record<string, unknown> => ({
+  description,
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: { accepted: { type: 'boolean' } },
+        required: ['accepted'],
+      },
+    },
+  },
 });
 
 const notificationIdentifierParameter = {
@@ -96,6 +132,10 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
     tags: [
       { name: 'Notifications', description: 'Creating notifications and following their delivery' },
       { name: 'Applications', description: 'What the presented key is allowed to do' },
+      {
+        name: 'Callbacks',
+        description: 'Called by the WhatsApp provider, authenticated by signature rather than key',
+      },
     ],
     components: {
       securitySchemes: {
@@ -129,7 +169,7 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
               name: 'Idempotency-Key',
               in: 'header',
               required: false,
-              schema: { type: 'string', maxLength: 255 },
+              schema: toRequestSchema(idempotencyKeySchema),
               description: 'Makes a retry safe. Scoped to the application, and valid for 24 hours.',
             },
           ],
@@ -155,14 +195,20 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
                 'application/json': { schema: { $ref: '#/components/schemas/Notification' } },
               },
             },
-            '400': problemResponse('The request body could not be parsed.'),
+            '400': problemResponse(
+              'The request body could not be parsed, a field failed validation — an invalid ' +
+                'recipient among them — or the Idempotency-Key header is empty or too long.',
+            ),
             '401': problemResponse('The API key is missing or not valid.'),
             '403': problemResponse('The API key lacks the notifications:write scope.'),
-            '409': problemResponse('A request with this Idempotency-Key is still in flight.'),
+            '404': problemResponse('The whatsAppSessionId does not belong to this application.'),
+            '409': problemResponse(
+              'A request with this Idempotency-Key is still in flight, or the application has ' +
+                'no connected WhatsApp session to send from.',
+            ),
             '422': problemResponse(
-              'The request is well formed but cannot be acted on — an invalid recipient, ' +
-                'a schedule in the past, no connected WhatsApp session, or an Idempotency-Key ' +
-                'already used with a different body.',
+              'The request is well formed but cannot be acted on — a schedule in the past, or ' +
+                'an Idempotency-Key already used with a different body.',
             ),
             '429': problemResponse('The rate limit was exceeded. See retry-after.'),
           },
@@ -204,8 +250,9 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
                 'application/json': { schema: { $ref: '#/components/schemas/NotificationList' } },
               },
             },
+            '400': problemResponse('The cursor, or one of the query filters, is not valid.'),
             '401': problemResponse('The API key is missing or not valid.'),
-            '422': problemResponse('The cursor or a filter is not valid.'),
+            '403': problemResponse('The API key lacks the notifications:read scope.'),
             '429': problemResponse('The rate limit was exceeded. See retry-after.'),
           },
         },
@@ -224,7 +271,9 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
                 'application/json': { schema: { $ref: '#/components/schemas/Notification' } },
               },
             },
+            '400': problemResponse('The notificationId in the path is not a valid identifier.'),
             '401': problemResponse('The API key is missing or not valid.'),
+            '403': problemResponse('The API key lacks the notifications:read scope.'),
             '404': problemResponse(
               'No such notification for this application. A notification belonging to another ' +
                 'tenant answers the same way, so the API cannot be used to discover identifiers.',
@@ -262,7 +311,9 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
                 },
               },
             },
+            '400': problemResponse('The notificationId in the path is not a valid identifier.'),
             '401': problemResponse('The API key is missing or not valid.'),
+            '403': problemResponse('The API key lacks the notifications:read scope.'),
             '404': problemResponse('No such notification for this application.'),
             '429': problemResponse('The rate limit was exceeded. See retry-after.'),
           },
@@ -285,6 +336,7 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
                 'application/json': { schema: { $ref: '#/components/schemas/Notification' } },
               },
             },
+            '400': problemResponse('The notificationId in the path is not a valid identifier.'),
             '401': problemResponse('The API key is missing or not valid.'),
             '403': problemResponse('The API key lacks the notifications:write scope.'),
             '404': problemResponse('No such notification for this application.'),
@@ -322,6 +374,7 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
               },
             },
             '401': problemResponse('The API key is missing or not valid.'),
+            '403': problemResponse('The API key lacks the notifications:read scope.'),
             '429': problemResponse('The rate limit was exceeded. See retry-after.'),
           },
         },
@@ -378,8 +431,13 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
                 },
               },
             },
-            '400': { description: 'The callback arrived without a body.' },
-            '401': { description: 'The signature did not verify, or the timestamp was stale.' },
+            '400': callbackResponse(
+              'The callback had no body, a body that could not be parsed, or a session ' +
+                'identifier in the path that is not a valid identifier.',
+            ),
+            '401': callbackResponse(
+              'The signature did not verify, or the timestamp was outside the tolerance window.',
+            ),
           },
         },
       },

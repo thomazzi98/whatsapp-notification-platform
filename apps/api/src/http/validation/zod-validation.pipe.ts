@@ -16,9 +16,11 @@ interface FieldError {
  */
 export class ZodValidationPipe<Output> implements PipeTransform<unknown, Output> {
   private readonly schema: ZodType<Output>;
+  private readonly subject: string;
 
-  public constructor(schema: ZodType<Output>) {
+  public constructor(schema: ZodType<Output>, subject = 'request body') {
     this.schema = schema;
+    this.subject = subject;
   }
 
   public transform(value: unknown): Output {
@@ -36,7 +38,7 @@ export class ZodValidationPipe<Output> implements PipeTransform<unknown, Output>
 
     throw new BadRequestException({
       error: 'Validation failed',
-      message: 'The request body did not match the expected schema.',
+      message: `The ${this.subject} did not match the expected schema.`,
       errors,
     });
   }

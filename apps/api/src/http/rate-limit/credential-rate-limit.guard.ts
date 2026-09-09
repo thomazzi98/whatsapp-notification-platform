@@ -4,7 +4,7 @@ import {
   type RateLimitPolicy,
   signInPolicy,
 } from '@platform/composition';
-import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
+import { type CanActivate, type ExecutionContext, HttpException, Injectable } from '@nestjs/common';
 import { type FastifyReply, type FastifyRequest } from 'fastify';
 
 /**
@@ -46,18 +46,16 @@ abstract class CredentialRateLimitGuard implements CanActivate {
     }
 
     void reply.header('retry-after', String(Math.ceil(outcome.retryAfterSeconds)));
-    void reply.status(429);
-    void reply.send({
-      type: 'about:blank',
-      title: 'Too Many Requests',
-      status: 429,
-      // Deliberately says nothing about whether any address exists: an answer
-      // that varied would turn the throttle into an account oracle.
-      detail: `Too many attempts from this address. Retry in ${String(Math.ceil(outcome.retryAfterSeconds))} seconds.`,
-      instance: request.url,
-    });
 
-    return false;
+    throw new HttpException(
+      {
+        error: 'Too Many Requests',
+        // Deliberately says nothing about whether any address exists: an answer
+        // that varied would turn the throttle into an account oracle.
+        message: `Too many attempts from this address. Retry in ${String(Math.ceil(outcome.retryAfterSeconds))} seconds.`,
+      },
+      429,
+    );
   }
 }
 

@@ -5,7 +5,7 @@ import {
   type RateLimitPolicy,
   RateLimitService,
 } from '@platform/composition';
-import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
+import { type CanActivate, type ExecutionContext, HttpException, Injectable } from '@nestjs/common';
 import { type FastifyReply } from 'fastify';
 
 import { type RequestWithApiKey } from '../authentication/authenticated-request';
@@ -85,17 +85,20 @@ export class ApiKeyRateLimitGuard implements CanActivate {
     }
 
     // Retry-After as well as the RateLimit headers: the first is what a generic
-    // HTTP client already knows how to obey.
+    // HTTP client already knows how to obey. Set before throwing, because the
+    // headers already on the reply survive into the filter's response.
     void reply.header('retry-after', String(Math.ceil(outcome.retryAfterSeconds)));
-    void reply.status(429);
-    void reply.send({
-      type: 'about:blank',
-      title: 'Too Many Requests',
-      status: 429,
-      detail: `This API key is limited to ${String(outcome.limit)} requests per minute. Retry in ${String(Math.ceil(outcome.retryAfterSeconds))} seconds.`,
-      instance: request.url,
-    });
 
-    return false;
+    // Thrown rather than sent, so this answer goes out as problem+json with the
+    // same type URL and correlation id as every other error. Written by hand it
+    // was the one response that contradicted the document's own claim that every
+    // error shares one shape.
+    throw new HttpException(
+      {
+        error: 'Too Many Requests',
+        message: `This API key is limited to ${String(outcome.limit)} requests per minute. Retry in ${String(Math.ceil(outcome.retryAfterSeconds))} seconds.`,
+      },
+      429,
+    );
   }
 }

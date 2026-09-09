@@ -17,6 +17,7 @@ export {
   updateApplicationRequestSchema,
 } from './applications';
 export {
+  idempotencyKeySchema,
   type NotificationCreationRequest,
   notificationCreationRequestSchema,
   type NotificationEventResponse,

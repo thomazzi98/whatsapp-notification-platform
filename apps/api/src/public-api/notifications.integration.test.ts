@@ -608,6 +608,49 @@ describe('rate limiting the public API', () => {
   });
 });
 
+describe('the shape every error answers in', () => {
+  it('renders a refused rate limit as problem+json, like every other error', async () => {
+    const tenant = await createTenant();
+    await setRateLimit(tenant.applicationId, { perMinute: 1, burst: 1 });
+
+    const responses = [];
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      responses.push(await createNotification(tenant, {}));
+    }
+    const refused = responses.find((response) => response.statusCode === 429);
+
+    expect(refused).toBeDefined();
+    // Built by hand inside the guard, this was the one answer that went out as
+    // application/json with a type of about:blank, contradicting the document's
+    // claim that every error shares one shape.
+    expect(String(refused?.headers['content-type'])).toContain('application/problem+json');
+    expect(refused?.body.type).not.toBe('about:blank');
+    expect(refused?.body.status).toBe(429);
+    expect(refused?.headers['retry-after']).toBeDefined();
+  });
+});
+
+describe('the idempotency key the document advertises a bound for', () => {
+  it('refuses one longer than the documented maximum', async () => {
+    const tenant = await createTenant();
+
+    const response = await createNotification(tenant, {}, 'k'.repeat(256));
+
+    // It used to reach the insert and violate the database CHECK, so a client
+    // holding a key one character too long got a 500 for a rule the document
+    // already stated.
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('refuses an empty one rather than treating it as absent', async () => {
+    const tenant = await createTenant();
+
+    const response = await createNotification(tenant, {}, '');
+
+    expect(response.statusCode).toBe(400);
+  });
+});
+
 describe('answering a client that got the request wrong', () => {
   it('refuses a path parameter that cannot be an identifier, rather than failing internally', async () => {
     const tenant = await createTenant();

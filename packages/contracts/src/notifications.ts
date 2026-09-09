@@ -1,6 +1,13 @@
 import { notificationStatuses } from '@platform/domain';
 import { z } from 'zod';
 
+/**
+ * The bound the database also enforces with a CHECK. Declared once so the
+ * documented limit and the enforced limit cannot drift apart: before this, an
+ * over-long key reached the insert and surfaced as a 500.
+ */
+export const idempotencyKeySchema = z.string().min(1).max(255);
+
 export const notificationCreationRequestSchema = z.object({
   /**
    * International format is required rather than inferred. Guessing a country

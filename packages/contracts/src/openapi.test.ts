@@ -109,3 +109,78 @@ describe('the OpenAPI document', () => {
     }
   });
 });
+
+/**
+ * The statuses an operation lists are written by hand, and every one of these
+ * was wrong: a 422 documented on a path that cannot produce it, a 409 and a 404
+ * described as 422, a 400 raised by the path pipe on four operations and
+ * mentioned on none, and a scope check whose 403 was documented only for the
+ * two write operations. A client generator turns each of those into a branch
+ * that never runs, or omits one that does.
+ */
+function statusesOf(name: string): string[] {
+  const found = operations.find((entry) => entry.name === name);
+  if (found === undefined) {
+    throw new Error(`The document has no operation ${name}.`);
+  }
+
+  return Object.keys(found.operation.responses as Record<string, unknown>).sort();
+}
+
+function describedBy(name: string, status: string): string {
+  const found = operations.find((entry) => entry.name === name);
+  const responses = found?.operation.responses as Record<string, { description: string }>;
+
+  return responses[status]?.description ?? '';
+}
+
+describe('the statuses each operation documents', () => {
+  it.each([
+    ['get /v1/notifications', ['200', '400', '401', '403', '429']],
+    ['post /v1/notifications', ['202', '400', '401', '403', '404', '409', '422', '429']],
+    ['get /v1/notifications/{notificationId}', ['200', '400', '401', '403', '404', '429']],
+    ['get /v1/notifications/{notificationId}/events', ['200', '400', '401', '403', '404', '429']],
+    [
+      'post /v1/notifications/{notificationId}/cancel',
+      ['200', '400', '401', '403', '404', '409', '429'],
+    ],
+    ['get /v1/applications/current', ['200', '401', '403', '429']],
+  ])('%s', (name, expected) => {
+    expect(statusesOf(name)).toStrictEqual(expected);
+  });
+
+  it('attributes a missing connection to the conflict it is, not to 422', () => {
+    expect(describedBy('post /v1/notifications', '409')).toContain('no connected WhatsApp session');
+    expect(describedBy('post /v1/notifications', '422')).not.toContain('WhatsApp session');
+  });
+
+  it('attributes an invalid recipient to the 400 the validator actually returns', () => {
+    expect(describedBy('post /v1/notifications', '400')).toContain('recipient');
+    expect(describedBy('post /v1/notifications', '422')).not.toContain('recipient');
+  });
+
+  it('documents the identifier rejection every path parameter can produce', () => {
+    for (const name of [
+      'get /v1/notifications/{notificationId}',
+      'get /v1/notifications/{notificationId}/events',
+      'post /v1/notifications/{notificationId}/cancel',
+    ]) {
+      expect(describedBy(name, '400')).toContain('not a valid identifier');
+    }
+  });
+});
+
+describe('the problem document', () => {
+  it('describes the fields a validation failure actually carries', () => {
+    const problem = document.components.schemas.Problem as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+
+    expect(Object.keys(problem.properties)).toContain('errors');
+    expect(Object.keys(problem.properties)).toContain('correlationId');
+    // Every problem this API emits sets it, and a client that has to guess
+    // whether a reason is present will not show one.
+    expect(problem.required).toContain('detail');
+  });
+});
