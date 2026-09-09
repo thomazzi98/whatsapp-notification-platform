@@ -16,8 +16,11 @@ test.describe('delivering a notification', () => {
 
     await sendNotification(page, recipients.healthy, 'Your order #4821 has shipped.');
 
-    // Accepted, not delivered. The distinction is the product.
-    await expect(page.getByText('Accepted and waiting for a worker')).toBeVisible();
+    // Accepted, not delivered. The distinction is the product, and the timeline
+    // is where it is durable: the QUEUED banner this used to read is a state the
+    // worker can leave before the page first renders, so asserting on it made
+    // the test a race against dispatch rather than a check on the contract.
+    await expect(page.getByRole('listitem').filter({ hasText: 'Accepted' }).first()).toBeVisible();
 
     await expect(page.getByText('WhatsApp accepted it')).toBeVisible({ timeout: 30_000 });
     const providerMessageId = await readProviderMessageId(page);
