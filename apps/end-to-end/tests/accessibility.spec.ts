@@ -41,15 +41,28 @@ test.describe('every screen a person lands on', () => {
     // shell around it has. Scanning mid-render measures a state nobody sees,
     // and reports something neither true nor reproducible.
     const screens = [
-      { path: base, settled: 'Recent notifications' },
-      { path: `${base}/notifications`, settled: 'Filters' },
-      { path: `${base}/send`, settled: 'Send a notification' },
-      { path: `${base}/connections`, settled: 'WhatsApp connections' },
+      { path: base, settled: page.getByRole('heading', { name: 'Recent notifications' }) },
+      { path: `${base}/notifications`, settled: page.getByRole('heading', { name: 'Filters' }) },
+      {
+        path: `${base}/send`,
+        settled: page.getByRole('heading', { name: 'Send a notification' }),
+      },
+      {
+        path: `${base}/connections`,
+        settled: page.getByRole('heading', { name: 'WhatsApp connections' }),
+      },
+      // These two settle on content rather than on a heading, because their
+      // headings are part of the shell and would let the scan run early.
+      { path: `${base}/api-keys`, settled: page.getByText('No keys yet') },
+      {
+        path: `${base}/status`,
+        settled: page.getByText('Accepting and queueing notifications.'),
+      },
     ];
 
     for (const screen of screens) {
       await page.goto(screen.path);
-      await expect(page.getByRole('heading', { name: screen.settled })).toBeVisible();
+      await expect(screen.settled).toBeVisible();
       await scan(page);
     }
   });
