@@ -218,7 +218,10 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
 
       const failure = responseForFailureMode(forcedFailureMode);
       if (failure !== undefined) {
-        return reply.status(failure.statusCode).send(failure.body);
+        return reply
+          .status(failure.statusCode)
+          .headers(failure.headers ?? {})
+          .send(failure.body);
       }
       if (isUnregisteredNumber(phone)) {
         return reply.send({ numberExists: false, chatId: null });
@@ -251,7 +254,12 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
 
     const failure = responseForFailureMode(mode);
     if (failure !== undefined) {
-      return reply.status(failure.statusCode).send(failure.body);
+      // The header included: a provider that says how long to wait and one that
+      // does not are different failures, and the caller is meant to notice.
+      return reply
+        .status(failure.statusCode)
+        .headers(failure.headers ?? {})
+        .send(failure.body);
     }
 
     if (session?.status !== 'WORKING') {

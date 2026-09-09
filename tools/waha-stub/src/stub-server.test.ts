@@ -22,7 +22,11 @@ async function call(options: {
   readonly url: string;
   readonly payload?: unknown;
   readonly withApiKey?: boolean;
-}): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+}): Promise<{
+  statusCode: number;
+  body: Record<string, unknown>;
+  headers: Record<string, unknown>;
+}> {
   const response = await server.inject({
     method: options.method,
     url: options.url,
@@ -33,6 +37,7 @@ async function call(options: {
   return {
     statusCode: response.statusCode,
     body: response.body.length > 0 ? response.json<Record<string, unknown>>() : {},
+    headers: response.headers,
   };
 }
 
@@ -273,6 +278,9 @@ describe('sending messages', () => {
     expect(serverError.statusCode).toBe(500);
     expect(unauthorized.statusCode).toBe(401);
     expect(rateLimited.statusCode).toBe(429);
+    // Without this the caller cannot tell a provider that named a wait from one
+    // that did not, and the backoff it computes is its own guess either way.
+    expect(rateLimited.headers['retry-after']).toBe('90');
   });
 
   it('can be forced into a failure mode for any recipient', async () => {

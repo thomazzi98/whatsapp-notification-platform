@@ -47,12 +47,25 @@ export function isUnregisteredNumber(phoneNumber: string): boolean {
 export interface FailureResponse {
   readonly statusCode: number;
   readonly body: Record<string, unknown>;
+  readonly headers?: Record<string, string>;
 }
+
+/**
+ * Deliberately longer than the first retry's own backoff ceiling of sixty
+ * seconds, so a caller that ignores the header and one that honours it end up
+ * scheduling visibly different times. A value inside the backoff window would
+ * let both look identical.
+ */
+const RATE_LIMITED_RETRY_AFTER_SECONDS = '90';
 
 const responseByMode: Partial<Record<FailureMode, FailureResponse>> = {
   server_error: { statusCode: 500, body: { message: 'Internal engine failure.' } },
   unauthorized: { statusCode: 401, body: { message: 'Unauthorized' } },
-  rate_limited: { statusCode: 429, body: { message: 'Too many requests.' } },
+  rate_limited: {
+    statusCode: 429,
+    body: { message: 'Too many requests.' },
+    headers: { 'retry-after': RATE_LIMITED_RETRY_AFTER_SECONDS },
+  },
   invalid_request: { statusCode: 422, body: { message: 'The request payload is invalid.' } },
 };
 

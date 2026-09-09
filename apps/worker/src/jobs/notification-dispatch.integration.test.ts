@@ -322,7 +322,11 @@ describe('provider failures', () => {
     const notification = await readNotification(notificationId);
 
     expect(notification.failureCode).toBe('provider_rate_limited');
-    expect(notification.nextAttemptAt?.getTime()).toBeGreaterThan(before + 1000);
+    // The stub names ninety seconds, and the first retry's own backoff never
+    // exceeds sixty. Anything inside that window would mean the header was
+    // read and then ignored — which is what this assertion used to allow.
+    expect(notification.nextAttemptAt?.getTime()).toBeGreaterThanOrEqual(before + 90_000);
+    expect(notification.nextAttemptAt?.getTime()).toBeLessThan(before + 120_000);
   });
 
   it('fails permanently for a number that is not on WhatsApp', async () => {
