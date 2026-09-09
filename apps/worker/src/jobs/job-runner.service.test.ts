@@ -108,19 +108,19 @@ describe('subscribing the worker to its queues', () => {
   });
 });
 
+async function runDeadLetterHandler(jobs: Job<unknown>[]): Promise<{
+  logger: { error: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
+}> {
+  const { runner, queues, logger } = createSubscribedRunner();
+  await runner.subscribe();
+  const deadLetter = queues.find((queue) => queue.name === queueNames.notificationDeadLetter);
+
+  await deadLetter?.handle(jobs);
+
+  return { logger };
+}
+
 describe('a notification that has been dead lettered', () => {
-  async function runDeadLetterHandler(jobs: Job<unknown>[]): Promise<{
-    logger: { error: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
-  }> {
-    const { runner, queues, logger } = createSubscribedRunner();
-    await runner.subscribe();
-    const deadLetter = queues.find((queue) => queue.name === queueNames.notificationDeadLetter);
-
-    await deadLetter?.handle(jobs);
-
-    return { logger };
-  }
-
   it('is reported at error level, naming the job an operator has to find', async () => {
     const { logger } = await runDeadLetterHandler([createJob('dead-one')]);
 

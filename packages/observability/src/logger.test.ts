@@ -232,11 +232,11 @@ describe('logging an error', () => {
     const failure = Object.assign(
       new Error(
         'Failed query: insert into notifications (recipient_phone_number, rendered_body) values ($1, $2)\nparams: +5511999998888,Your order has shipped Maria',
+        { cause: new Error('duplicate key value violates unique constraint') },
       ),
       {
         query: 'insert into notifications (recipient_phone_number, rendered_body) values ($1, $2)',
         params: ['+5511999998888', 'Your order has shipped Maria'],
-        cause: new Error('duplicate key value violates unique constraint'),
       },
     );
 

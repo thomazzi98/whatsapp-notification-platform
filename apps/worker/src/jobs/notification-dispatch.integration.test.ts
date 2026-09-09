@@ -178,6 +178,23 @@ type NotificationOverrides = Partial<
   Omit<NotificationFixture, 'applicationId' | 'whatsAppSessionId'>
 >;
 
+/**
+ * Waits until the attempt row exists, which is the dispatcher's last commit
+ * before it contacts the provider. Waiting only for the claim would land inside
+ * beginAttempt's own fence instead of the window under test.
+ */
+async function waitUntilSendInFlight(notificationId: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const attempts = await database.listSendAttempts(notificationId);
+    if (attempts.length > 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('The dispatcher never started a send attempt.');
+}
+
 async function queueNotification(
   fixture: Fixture,
   overrides: NotificationOverrides = {},
@@ -201,6 +218,78 @@ describe('delivering a notification', () => {
     expect(notification.status).toBe('SENT');
     expect(notification.providerMessageId).toBeTruthy();
     expect(notification.sentAt).not.toBeNull();
+  });
+
+  it('commits the attempt ledger with the SENT row, not before it', async () => {
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    await dispatch(fixture, notificationId);
+
+    // Resolved in its own statement ahead of the transition, a crash in the
+    // window between the two left an attempt marked SUCCEEDED on a notification
+    // still PROCESSING. The reaper then returned it to the queue and WhatsApp
+    // received the message twice -- and because the attempt carried a resolved
+    // outcome it was never treated as unknown, so FAIL_CLOSED protected nobody.
+    const [attempt] = await database.listSendAttempts(notificationId);
+    const notification = await readNotification(notificationId);
+    expect(attempt?.outcome).toBe('SUCCEEDED');
+    expect(notification.status).toBe('SENT');
+  });
+
+  it('does not claim to have sent a notification it no longer owns', async () => {
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    // The send is held open so the row can be taken away underneath it, which
+    // is what the reaper does to any claim it considers abandoned. The provider
+    // timeout is raised above the delay for this test alone: a send that times
+    // out is a different path, and would prove nothing about ownership.
+    await buildContext({
+      whatsAppProvider: {
+        baseUrl: stubBaseUrl,
+        apiKey,
+        requestTimeoutMilliseconds: 15_000,
+        webhookPublicUrl: 'http://api.invalid:3000',
+        webhookToleranceSeconds: 300,
+      },
+    });
+    await fetch(`${stubBaseUrl}/__stub/send-delay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ milliseconds: 3000 }),
+    });
+    const inFlight = dispatch(fixture, notificationId);
+
+    await waitUntilSendInFlight(notificationId);
+    await database.ageClaim(notificationId, configuration.delivery.stuckClaimTimeoutSeconds + 60);
+    await maintenance.runOnce();
+
+    const result = await inFlight;
+    await buildContext();
+
+    // WhatsApp did receive the message. Reporting it sent would be a lie about
+    // who owns the row, and writing the timeline event would be permanent:
+    // notification_events is append-only by grant, so a SENT entry on a
+    // notification that was never moved to SENT could not be corrected.
+    expect(result.outcome).toBe('not_claimable');
+    const events = await database.listEventTypes(notificationId);
+    expect(events).not.toContain('notification.sent');
+  });
+
+  it('adds nothing to the ledger when the same job is delivered again', async () => {
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+    await dispatch(fixture, notificationId);
+
+    // pg-boss guarantees at-least-once, so this happens in production whenever
+    // a job is redelivered after its handler committed.
+    const second = await dispatch(fixture, notificationId);
+
+    expect(second.outcome).toBe('not_claimable');
+    expect(await database.listSendAttempts(notificationId)).toHaveLength(1);
+    const events = await database.listEventTypes(notificationId);
+    expect(events.filter((event) => event === 'notification.sent')).toHaveLength(1);
   });
 
   it('reports SENT rather than DELIVERED, because nobody has received it yet', async () => {

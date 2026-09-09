@@ -263,12 +263,15 @@ export class DispatchNotificationService {
     }
 
     const now = this.clock.now();
-    await this.resolveAttempt(notification, attempt.attemptNumber, 'SUCCEEDED', {
-      providerMessageId: result.value.providerMessageId,
-    });
 
-    await this.connection.database.transaction(async (transaction) => {
-      await this.notifications.applyTransition(transaction, {
+    // The attempt ledger and the SENT row commit together. Resolved separately,
+    // a crash in the window between them left an attempt marked SUCCEEDED on a
+    // notification still PROCESSING: the reaper returned it to the queue and
+    // WhatsApp received the message twice, and because the attempt had a
+    // resolved outcome it was never treated as unknown, so FAIL_CLOSED did not
+    // protect the tenants who chose it.
+    const wasRecorded = await this.connection.database.transaction(async (transaction) => {
+      const transitioned = await this.notifications.applyTransition(transaction, {
         applicationId: notification.applicationId,
         notificationId: notification.id,
         expectedStatus: 'PROCESSING',
@@ -283,6 +286,22 @@ export class DispatchNotificationService {
         },
         now,
       });
+
+      // Zero rows means the notification is no longer this worker's to move.
+      // notification_events is append-only by grant, so an event written for a
+      // transition that did not happen is a permanently uncorrectable entry in
+      // the timeline the public API serves.
+      if (transitioned === undefined) {
+        return false;
+      }
+
+      await this.resolveAttempt(
+        notification,
+        attempt.attemptNumber,
+        'SUCCEEDED',
+        { providerMessageId: result.value.providerMessageId },
+        transaction,
+      );
       await this.notifications.appendEvent(transaction, {
         id: this.identifiers.generate(),
         applicationId: notification.applicationId,
@@ -296,7 +315,16 @@ export class DispatchNotificationService {
         payload: { providerMessageId: result.value.providerMessageId },
         correlationId: input.correlationId,
       });
+
+      return true;
     });
+
+    if (!wasRecorded) {
+      // The message did reach WhatsApp. Reporting it as sent would be a lie
+      // about who owns the row; reporting a failure would be a lie about the
+      // message. The claim is what was lost, so that is what is reported.
+      return { outcome: 'not_claimable' };
+    }
 
     return { outcome: 'sent' };
   }
@@ -480,15 +508,19 @@ export class DispatchNotificationService {
     attemptNumber: number,
     outcome: SendAttemptOutcome,
     details: { readonly providerMessageId?: string; readonly failureCode?: string },
+    executor?: DatabaseTransaction,
   ): Promise<void> {
-    await this.sendAttempts.resolve({
-      applicationId: notification.applicationId,
-      notificationId: notification.id,
-      attemptNumber,
-      outcome,
-      ...details,
-      now: this.clock.now(),
-    });
+    await this.sendAttempts.resolve(
+      {
+        applicationId: notification.applicationId,
+        notificationId: notification.id,
+        attemptNumber,
+        outcome,
+        ...details,
+        now: this.clock.now(),
+      },
+      executor,
+    );
   }
 
   /**

@@ -65,8 +65,14 @@ export class NotificationSendAttemptRepository {
     return inserted as SendAttemptRecord;
   }
 
-  public async resolve(input: ResolveSendAttemptInput): Promise<void> {
-    await this.database
+  /**
+   * `executor` lets the resolution commit with whatever else the caller is
+   * writing. The success path needs that: an attempt marked SUCCEEDED in its own
+   * statement, followed by a separate transaction for the SENT row, leaves a
+   * window where a crash loses the send and the reaper resends it.
+   */
+  public async resolve(input: ResolveSendAttemptInput, executor?: QueryExecutor): Promise<void> {
+    await (executor ?? this.database)
       .update(notificationSendAttempts)
       .set({
         outcome: input.outcome,

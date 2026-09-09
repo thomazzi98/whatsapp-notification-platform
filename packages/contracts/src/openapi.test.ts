@@ -124,7 +124,9 @@ function statusesOf(name: string): string[] {
     throw new Error(`The document has no operation ${name}.`);
   }
 
-  return Object.keys(found.operation.responses as Record<string, unknown>).sort();
+  return Object.keys(found.operation.responses as Record<string, unknown>).toSorted(
+    (first, second) => first.localeCompare(second),
+  );
 }
 
 function describedBy(name: string, status: string): string {

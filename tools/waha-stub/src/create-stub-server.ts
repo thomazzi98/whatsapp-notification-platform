@@ -72,6 +72,12 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
   const webhooks = new WebhookSender();
   let forcedFailureMode: FailureMode = 'none';
   let sentMessageCounter = 0;
+  /**
+   * Holds a send open for a bounded time. Distinct from the `timeout` failure
+   * mode, which never answers at all: this one still succeeds, which is what
+   * lets a test act on the database while a send is genuinely in flight.
+   */
+  let sendDelayMilliseconds = 0;
 
   server.addHook('onRequest', (request, reply, done) => {
     // /ping and the control plane are deliberately unauthenticated, matching
@@ -262,6 +268,10 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
         .send(failure.body);
     }
 
+    if (sendDelayMilliseconds > 0) {
+      await new Promise((resolve) => setTimeout(resolve, sendDelayMilliseconds));
+    }
+
     if (session?.status !== 'WORKING') {
       return reply.status(422).send({ message: 'The session is not connected.' });
     }
@@ -294,7 +304,14 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       webhooks.clear();
       forcedFailureMode = 'none';
       sentMessageCounter = 0;
+      sendDelayMilliseconds = 0;
       return reply.send({ reset: true });
+    });
+
+    server.post<{ Body: { milliseconds?: number } }>('/__stub/send-delay', (request, reply) => {
+      sendDelayMilliseconds = Math.max(0, Math.min(request.body.milliseconds ?? 0, 30_000));
+
+      return reply.send({ sendDelayMilliseconds });
     });
 
     server.post<{ Body: { mode?: string } }>('/__stub/failure-mode', (request, reply) => {
