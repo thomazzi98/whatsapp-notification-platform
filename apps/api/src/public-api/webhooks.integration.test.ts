@@ -225,6 +225,33 @@ describe('connecting WhatsApp', () => {
     );
   });
 
+  it('removes it from the provider before forgetting about it', async () => {
+    const connection = await createConnection();
+
+    const removed = await dashboardRequest(
+      'DELETE',
+      `/dashboard/applications/${connection.tenant.applicationId}/whatsapp-sessions/${connection.sessionId}`,
+      { tenant: connection.tenant },
+    );
+
+    expect(removed.statusCode).toBe(204);
+    // Forgetting the row locally is the easy half. Without the provider call,
+    // a paired WhatsApp account keeps running against a connection the platform
+    // no longer knows about, still receiving messages nobody reads.
+    const stubState = await fetch(`${stubBaseUrl}/__stub/state`);
+    const state = (await stubState.json()) as { sessions: { name: string }[] };
+    expect(state.sessions.map((session) => session.name)).not.toContain(
+      connection.providerSessionName,
+    );
+
+    const read = await dashboardRequest(
+      'GET',
+      `/dashboard/applications/${connection.tenant.applicationId}/whatsapp-sessions/${connection.sessionId}`,
+      { tenant: connection.tenant },
+    );
+    expect(read.statusCode).toBe(404);
+  });
+
   it('never returns the signing key or the provider session name', async () => {
     const connection = await createConnection();
     const listed = await dashboardRequest(
