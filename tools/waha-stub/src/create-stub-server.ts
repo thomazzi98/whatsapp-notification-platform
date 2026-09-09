@@ -67,7 +67,11 @@ function toSessionResponse(session: StubSession): Record<string, unknown> {
  * provoking failures on demand.
  */
 export function createStubServer(options: StubServerOptions): FastifyInstance {
-  const server = Fastify({ logger: false });
+  // Idle keep-alive sockets are what a client leaves behind, and Node's close
+  // waits for them. A stub whose lifetime is one test run should go when it is
+  // told to: without this, closing it waited on the caller's pooled connection
+  // and the hook timed out with every test already passed.
+  const server = Fastify({ logger: false, forceCloseConnections: true });
   const sessions = new SessionStore();
   const webhooks = new WebhookSender();
   let forcedFailureMode: FailureMode = 'none';
@@ -245,11 +249,16 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       forcedFailureMode === 'none' ? failureModeForRecipient(chatIdentifier) : forcedFailureMode;
 
     if (mode === 'timeout') {
-      // Never answers. The caller's own timeout is what ends this, which is the
-      // condition that leaves an attempt with an unknown outcome.
-      await new Promise(() => {
-        // Intentionally never settles.
+      // Never answers: the caller's own timeout is what ends this, which is the
+      // condition that leaves an attempt with an unknown outcome. It does settle
+      // once the caller gives up and the socket closes, because a handler that
+      // never returns is one the server can never finish closing -- which
+      // surfaced as a hung afterAll rather than as anything to do with sending.
+      await new Promise<void>((resolve) => {
+        request.raw.once('close', resolve);
       });
+
+      return reply;
     }
     if (mode === 'connection_reset') {
       // The socket, not the request stream: destroying the stream alone leaves
