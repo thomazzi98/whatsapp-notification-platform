@@ -29,20 +29,45 @@ function buildTransport(format: LogFormat): LoggerOptions['transport'] {
 }
 
 /**
- * Reduces an error to what identifies it.
- *
- * A driver error carries its whole client: connection parameters, socket
- * state, the type catalogue. pino's default serializer copies every own
- * property, so one database restart writes several kilobytes of internals per
- * line -- including the host and the role it connects as. Everything an
- * operator can act on is in these five fields.
- */
-/**
- * The same bound applied to a plain object. Ten fields is more than any real
+ * The bound applied to a thrown plain object. Ten fields is more than any real
  * failure payload carries and far less than a driver's internals.
  */
 const maximumSerializedFields = 10;
 
+/**
+ * Drizzle wraps every failed query in an error whose message is the statement
+ * followed by every bound parameter, and `Error.stack` repeats that message on
+ * its first line. So one failing insert on `notifications` wrote the recipient's
+ * phone number and the rendered message body straight into the log, past a
+ * redaction list that can only match field paths and never looks inside a
+ * string. The statement is withheld here rather than at the call sites, because
+ * this is the one function every error log passes through.
+ */
+function withheldQueryOrNot(error: Error): Record<string, unknown> {
+  if (typeof (error as { query?: unknown }).query !== 'string') {
+    return { message: error.message, stack: error.stack };
+  }
+
+  return {
+    message: 'A database query failed. Its statement and parameters are withheld.',
+    // Frames only. The header line is the message, which is what carries the
+    // parameters.
+    stack: (error.stack ?? '')
+      .split('\n')
+      .filter((line) => line.trimStart().startsWith('at '))
+      .join('\n'),
+  };
+}
+
+/**
+ * Reduces an error to what identifies it.
+ *
+ * A driver error carries its whole client: connection parameters, socket state,
+ * the type catalogue. pino's default serializer copies every own property, so
+ * one database restart writes several kilobytes of internals per line --
+ * including the host and the role it connects as. Everything an operator can
+ * act on is in these few fields.
+ */
 function serializeError(error: unknown): Record<string, unknown> {
   if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
     // pg-boss emits a plain object rather than an Error, and `String()` renders
@@ -66,9 +91,10 @@ function serializeError(error: unknown): Record<string, unknown> {
 
   return {
     type: error.name,
-    message: error.message,
+    ...withheldQueryOrNot(error),
     ...(typeof code === 'string' && { code }),
-    stack: error.stack,
+    // The reason Postgres gave is on the cause, and it is the diagnostic that
+    // matters; the wrapper above it only says which statement failed.
     ...(error.cause !== undefined && { cause: serializeError(error.cause) }),
   };
 }

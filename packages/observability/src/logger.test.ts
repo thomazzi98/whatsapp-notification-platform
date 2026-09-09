@@ -223,6 +223,49 @@ describe('logging an error', () => {
     expect(Object.keys(logged)).toHaveLength(11);
   });
 
+  it('withholds the statement and parameters drizzle puts in a query error', () => {
+    const { logger, lines } = createCapturedLogger();
+    // The exact shape drizzle throws: the message is the SQL followed by every
+    // bound value, and Error.stack repeats that message on its first line. The
+    // redaction list matches field paths and can never look inside a string, so
+    // one failing insert used to write the recipient and the body to the log.
+    const failure = Object.assign(
+      new Error(
+        'Failed query: insert into notifications (recipient_phone_number, rendered_body) values ($1, $2)\nparams: +5511999998888,Your order has shipped Maria',
+      ),
+      {
+        query: 'insert into notifications (recipient_phone_number, rendered_body) values ($1, $2)',
+        params: ['+5511999998888', 'Your order has shipped Maria'],
+        cause: new Error('duplicate key value violates unique constraint'),
+      },
+    );
+
+    logger.error({ error: failure }, 'A write failed');
+
+    const serialised = JSON.stringify(lines()[0]);
+    expect(serialised).not.toContain('5511999998888');
+    expect(serialised).not.toContain('Your order has shipped');
+    expect(serialised).not.toContain('insert into notifications');
+    // The reason Postgres gave still has to survive, or the line is useless.
+    expect(serialised).toContain('duplicate key value violates unique constraint');
+  });
+
+  it('keeps the frames of a withheld query error, so it can still be located', () => {
+    const { logger, lines } = createCapturedLogger();
+    const failure = Object.assign(new Error('Failed query: select 1\nparams: secret-value'), {
+      query: 'select 1',
+      params: ['secret-value'],
+    });
+    failure.stack =
+      'Error: Failed query: select 1\nparams: secret-value\n    at doWrite (repo.ts:1:1)';
+
+    logger.error({ error: failure }, 'A write failed');
+
+    const logged = lines()[0]?.error as { stack?: string };
+    expect(logged.stack).toContain('at doWrite');
+    expect(logged.stack).not.toContain('secret-value');
+  });
+
   it('keeps a cause, because that is usually the real reason', () => {
     const { logger, lines } = createCapturedLogger();
     const failure = new Error('Failed query', { cause: new Error('permission denied') });
