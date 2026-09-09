@@ -294,6 +294,49 @@ describe('idempotency', () => {
     expect((listed.body.data as unknown[]).length).toBe(1);
   });
 
+  it('creates one notification for requests that arrive at the same moment', async () => {
+    const tenant = await createTenant();
+    const key = 'order-123-shipped-at-once';
+
+    // Sequential repeats only ever exercise the replay path, because the first
+    // request has already committed its claim. Concurrency is what puts several
+    // requests on the claim itself, which is the case the unique index and the
+    // ON CONFLICT DO NOTHING exist for.
+    const responses = await Promise.all(
+      Array.from({ length: 6 }, async () => createNotification(tenant, {}, key)),
+    );
+
+    const listed = await request({
+      method: 'GET',
+      url: '/v1/notifications',
+      bearerToken: tenant.apiKey,
+    });
+    expect((listed.body.data as unknown[]).length).toBe(1);
+
+    // Every caller is told something true: it was accepted, or the identical
+    // request it duplicates is still in flight. None is refused outright and
+    // none gets a second notification.
+    for (const response of responses) {
+      expect([202, 409]).toContain(response.statusCode);
+    }
+    const accepted = responses.filter((response) => response.statusCode === 202);
+    expect(accepted.length).toBeGreaterThan(0);
+    expect(new Set(accepted.map((response) => response.body.id)).size).toBe(1);
+  });
+
+  it('leaves a usable key behind when concurrent callers race', async () => {
+    const tenant = await createTenant();
+    const key = 'order-123-retried-after-the-race';
+
+    await Promise.all(Array.from({ length: 4 }, async () => createNotification(tenant, {}, key)));
+    // A claim abandoned by a rolled-back transaction would poison the key and
+    // answer 409 forever, so the client that retries is what proves it did not.
+    const afterwards = await createNotification(tenant, {}, key);
+
+    expect(afterwards.statusCode).toBe(202);
+    expect(afterwards.headers['idempotent-replayed']).toBe('true');
+  });
+
   it('rejects the same key used with a different body', async () => {
     const tenant = await createTenant();
     const key = 'order-123-shipped';
