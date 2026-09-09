@@ -79,6 +79,9 @@ describe('createLogger', () => {
         plaintextKey: 'wnp_live_also_secret',
         password: 'hunter2',
         webhookHmacKey: 'signing-key',
+        // The names the platform actually uses for the callback secret.
+        webhookSigningKey: 'the-real-callback-secret',
+        signingKey: 'the-same-secret-while-generated',
       },
       'credentials',
     );
@@ -88,6 +91,8 @@ describe('createLogger', () => {
     expect(raw).not.toContain('wnp_live_also_secret');
     expect(raw).not.toContain('hunter2');
     expect(raw).not.toContain('signing-key');
+    expect(raw).not.toContain('the-real-callback-secret');
+    expect(raw).not.toContain('the-same-secret-while-generated');
     expect(lines()[0]?.apiKey).toBe(redactionCensorValue);
   });
 

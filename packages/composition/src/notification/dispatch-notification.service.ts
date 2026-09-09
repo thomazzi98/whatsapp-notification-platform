@@ -239,6 +239,11 @@ export class DispatchNotificationService {
       return { outcome: 'not_claimable' };
     }
 
+    // Enrichment mutates the open scope, so every line for the rest of this
+    // dispatch says which attempt it belongs to. Nothing set it before, and
+    // without it a retry and a first try read identically in the log.
+    enrichCorrelationContext({ attemptNumber: attempt.attemptNumber });
+
     if (attempt.attemptNumber > notification.maximumAttempts) {
       return this.fail(
         notification,

@@ -24,7 +24,7 @@ import {
   type NotificationStatus,
   type ProviderEvent,
 } from '@platform/domain';
-import { logEvents } from '@platform/observability';
+import { enrichCorrelationContext, logEvents } from '@platform/observability';
 import { toProviderEvent } from '@platform/provider-whatsapp';
 import { Inject, Injectable } from '@nestjs/common';
 import { type Logger } from 'pino';
@@ -123,6 +123,16 @@ export class ProcessWebhookService {
     if (notification === undefined) {
       return this.reportUnmatched(delivery);
     }
+
+    // The callback's own scope carries only the callback's identifiers. Without
+    // this, a delivery that WhatsApp reported as undeliverable was recorded as
+    // FAILED and every line about it named the webhook rather than the
+    // notification -- so the one query an operator would run, by notification
+    // id, returned nothing.
+    enrichCorrelationContext({
+      notificationId: notification.id,
+      applicationId: notification.applicationId,
+    });
 
     const current = isDeliveryAcknowledgement(notification.providerAcknowledgement)
       ? notification.providerAcknowledgement

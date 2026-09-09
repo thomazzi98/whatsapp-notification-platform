@@ -12,7 +12,6 @@ import {
   type RegisterRequest,
   registerRequestSchema,
 } from '@platform/contracts';
-import { logEvents } from '@platform/observability';
 import {
   Body,
   Controller,
@@ -113,7 +112,6 @@ export class AuthenticationController {
       userAgent: reply.request.headers['user-agent'] ?? null,
     });
     this.setSessionCookie(reply, session);
-    reply.log.info({ event: logEvents.authenticationSucceeded }, 'Signed in');
 
     return this.toSessionResponse(session.principal);
   }

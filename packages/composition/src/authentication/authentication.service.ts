@@ -214,6 +214,15 @@ export class AuthenticationService {
     }
 
     await this.users.recordSuccessfulLogin(user.id, now);
+    // Logged beside the refusals rather than in the controller, where it went
+    // to `reply.log` -- the adapter is built without a Fastify logger, so that
+    // call was a literal no-op and a successful sign-in appeared in no stream.
+    // A refusal stream with no successes in it cannot answer "was this address
+    // guessing, or is it the user".
+    this.logger.info(
+      { event: logEvents.authenticationSucceeded, ipAddress: input.ipAddress },
+      'A sign-in succeeded',
+    );
 
     const organization = await this.organizations.findById(user.organizationId);
     if (organization === undefined) {

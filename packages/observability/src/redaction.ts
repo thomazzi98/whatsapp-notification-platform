@@ -33,7 +33,14 @@ const sensitivePropertyNames: readonly string[] = [
   'recipientSalt',
   'tokenHash',
   'sessionToken',
+  // The name the callback's HMAC travels under on the wire, and the two the
+  // platform itself uses for the same secret. Only the first was listed, and
+  // nothing in the repository produces it: the plaintext key is returned as
+  // `webhookSigningKey` when a connection is created, and held as `signingKey`
+  // while it is generated.
   'webhookHmacKey',
+  'webhookSigningKey',
+  'signingKey',
   'authorization',
 
   'qr',
