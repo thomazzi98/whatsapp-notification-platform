@@ -1,7 +1,7 @@
 import { createDatabaseConnection, type DatabaseConnection, schema } from '@platform/database';
 import { eq } from 'drizzle-orm';
 import { type PgBoss } from 'pg-boss';
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 import { enqueueInTransaction } from './enqueue-in-transaction';
 import { createQueueClient } from './queue-client';
@@ -24,6 +24,12 @@ let connection: DatabaseConnection;
 let boss: PgBoss;
 /** Collected rather than ignored: an unobserved failure here is a lost job. */
 const failures: Error[] = [];
+
+afterEach(() => {
+  // Asserted, not merely gathered. A queue client error during a test would
+  // otherwise be swallowed by the very listener added to notice it.
+  expect(failures).toStrictEqual([]);
+});
 let organizationId: string;
 
 beforeAll(async () => {

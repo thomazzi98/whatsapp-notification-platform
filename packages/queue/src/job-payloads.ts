@@ -15,10 +15,6 @@ export const notificationDispatchPayloadSchema = baseJobPayloadSchema.extend({
   applicationId: z.uuid(),
 });
 
-export type NotificationDispatchPayload = z.infer<typeof notificationDispatchPayloadSchema>;
-
 export const webhookProcessPayloadSchema = baseJobPayloadSchema.extend({
   webhookDeliveryId: z.uuid(),
 });
-
-export type WebhookProcessPayload = z.infer<typeof webhookProcessPayloadSchema>;

@@ -151,15 +151,19 @@ a query nobody intended.
 The review ran `pnpm audit`, read the history for committed secrets, checked the
 browser bundle for leaked configuration, and worked through the surfaces above.
 
-| Finding                                                                                                                                                                                                 | Action                                                                                                                                      |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Three moderate Fastify advisories (`GHSA-w2qp-rph6-63g4`, `GHSA-3m5p-2c4r-xxw2`, and one further), all fixed in 5.12.1. `@nestjs/platform-fastify@11.2.3` pins 5.11.3 exactly and has no newer release. | Fixed. A workspace override lifts the whole tree to 5.12.3, keeping a single copy of Fastify in the process.                                |
-| `GHSA-67mh-4wv8-2f99` in esbuild, reached through drizzle-kit's legacy loader. Development only, and the affected code path is a dev server this project never runs.                                    | Fixed rather than accepted: an advisory that is merely unreachable today is one nobody re-reads tomorrow. Overridden to `^0.25.12`.         |
-| Tenant isolation relied entirely on application-level scoping. The README and a source comment already described row level security that did not exist.                                                 | Fixed. Policies, a non-login tenant role, `withTenantScope`, and an isolation test.                                                         |
-| `@nestjs/swagger` and `nestjs-zod` sat in the dependency catalog, used by nothing.                                                                                                                      | Removed. Unused dependency declarations are attack surface that nobody audits.                                                              |
-| A database outage logged the driver's entire client object, including the host and the role it connects as, once per failed query.                                                                      | Fixed. Errors are serialised to type, message, code, stack and cause. Found by stopping Postgres rather than by reading the redaction list. |
-| No committed secrets in history; only `.env.example`, which holds placeholders.                                                                                                                         | No action.                                                                                                                                  |
-| No configuration in the browser bundle.                                                                                                                                                                 | No action. The single-origin design is what makes this structural rather than lucky.                                                        |
+| Finding                                                                                                                                                                                                                                                                            | Action                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Three moderate Fastify advisories (`GHSA-w2qp-rph6-63g4`, `GHSA-3m5p-2c4r-xxw2`, and one further), all fixed in 5.12.1. `@nestjs/platform-fastify@11.2.3` pins 5.11.3 exactly and has no newer release.                                                                            | Fixed. A workspace override lifts the whole tree to 5.12.3, keeping a single copy of Fastify in the process.                                                                                                        |
+| `GHSA-67mh-4wv8-2f99` in esbuild, reached through drizzle-kit's legacy loader. Development only, and the affected code path is a dev server this project never runs.                                                                                                               | Fixed rather than accepted: an advisory that is merely unreachable today is one nobody re-reads tomorrow. Overridden to `^0.25.12`.                                                                                 |
+| Tenant isolation relied entirely on application-level scoping. The README and a source comment already described row level security that did not exist.                                                                                                                            | Fixed. Policies, a non-login tenant role, `withTenantScope`, and an isolation test.                                                                                                                                 |
+| `@nestjs/swagger` and `nestjs-zod` sat in the dependency catalog, used by nothing.                                                                                                                                                                                                 | Removed. Unused dependency declarations are attack surface that nobody audits.                                                                                                                                      |
+| A database outage logged the driver's entire client object, including the host and the role it connects as, once per failed query.                                                                                                                                                 | Fixed. Errors are serialised to type, message, code, stack and cause. Found by stopping Postgres rather than by reading the redaction list.                                                                         |
+| `verify:layers` had been passing vacuously. Every cross-package import resolved into that package's `dist`, which the config excluded, so all four layering rules matched nothing — and the API's webhook controller had been importing the provider adapter directly, unreported. | Fixed. The cruise reads a source mapping and now sees 913 dependencies instead of 458; both halves of the domain purity rule fire when probed. The violation is fixed by re-exporting through the composition root. |
+| A malformed identifier in a path reached a `uuid` column, raised Postgres 22P02 and surfaced as a 500 logged at error level — a client typo arriving as an internal failure.                                                                                                       | Fixed. All thirty-three path parameters are validated at the boundary and answer 400.                                                                                                                               |
+| A failed sign-in was logged nowhere, so credential guessing left no trace. The event name existed in the vocabulary and nothing emitted it.                                                                                                                                        | Fixed. Every refused sign-in and every refused API key is logged with a reason and the address, and a test fails if the vocabulary drifts again.                                                                    |
+| Two references could point across a tenant boundary: `retry_of_notification_id` was a single-column foreign key and `idempotency_key_id` had none at all.                                                                                                                          | Fixed. Both are composite now, with column-scoped delete actions so the expiry reaper still works.                                                                                                                  |
+| No committed secrets in history; only `.env.example`, which holds placeholders.                                                                                                                                                                                                    | No action.                                                                                                                                                                                                          |
+| No configuration in the browser bundle.                                                                                                                                                                                                                                            | No action. The single-origin design is what makes this structural rather than lucky.                                                                                                                                |
 
 ## What is out of scope, and why
 
@@ -178,6 +182,27 @@ These are absences, not oversights. Each is a decision.
   that would be wrong for a limiter defending a security boundary.
 - **The container images are not signed and no software bill of materials is
   published.**
+
+## What the checks cover, and what they do not
+
+`verify:secrets` reads every tracked file and every commit in the history. It
+knows the four shapes this platform produces — its own API keys, the base64
+secrets its configuration requires, database URLs and private keys — and tells
+a real one from a fixture by entropy rather than by a list of exemptions. It
+self-tests before each run.
+
+`verify:layers` and `verify:unused` both read the source through a mapping that
+resolves workspace imports to source rather than to built output. Both reported
+success while seeing nothing before that mapping existed, which is the failure
+mode to watch for in any static check: it does not announce itself.
+
+Two things are asserted by review rather than by a test. The constant-time
+comparison in the API key check is a property of the primitive chosen, and
+nothing mechanically stops someone replacing `timingSafeEqual` with `equals`.
+And nothing pins `withTenantScope` into the request path: because every
+repository already filters by tenant, removing the wrapper would leave the
+suite green, and only the database-level isolation tests would still prove the
+policies themselves work.
 
 ## Reporting
 

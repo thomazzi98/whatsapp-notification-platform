@@ -1,8 +1,22 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
-import { connectWhatsApp, recipients, signUpAndCreateApplication } from './support';
+import { connectWhatsApp, recipients, signUpAndCreateApplication, unique } from './support';
 
 const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:3100';
+
+/** Creates a key through the screens and returns the one-time plaintext value. */
+async function createKeyThroughTheDashboard(page: Page): Promise<string> {
+  await page.getByRole('link', { name: 'API keys' }).click();
+  await page.getByLabel('Name').fill(unique('service'));
+  await page.getByRole('button', { name: 'Create key' }).click();
+
+  return (
+    (await page
+      .getByText(/^wnp_(test|live)_/)
+      .first()
+      .textContent()) ?? ''
+  );
+}
 
 test.describe('API keys', () => {
   test('shows a usable key once, and never again', async ({ page }) => {
@@ -64,6 +78,37 @@ test.describe('API keys', () => {
     });
 
     expect(rejected.status()).toBe(401);
+  });
+
+  test("cannot read another tenant's notification, with a real key", async ({ page, request }) => {
+    // The negative case above uses a key that never existed, which proves only
+    // that the parser rejects nonsense. Tenant isolation is a different claim:
+    // a real, valid, active key must not reach a real notification belonging to
+    // somebody else. Nothing tested that end to end.
+    await signUpAndCreateApplication(page);
+    await connectWhatsApp(page);
+    const firstKey = await createKeyThroughTheDashboard(page);
+
+    const created = await request.post(`${API_URL}/v1/notifications`, {
+      headers: { authorization: `Bearer ${firstKey}` },
+      data: { recipient: recipients.healthy, body: "The other tenant's message." },
+    });
+    const notificationId = ((await created.json()) as { id: string }).id;
+
+    // A second organisation, in a fresh browser context, with its own key.
+    await page.context().clearCookies();
+    await signUpAndCreateApplication(page);
+    await connectWhatsApp(page);
+    const secondKey = await createKeyThroughTheDashboard(page);
+
+    const refused = await request.get(`${API_URL}/v1/notifications/${notificationId}`, {
+      headers: { authorization: `Bearer ${secondKey}` },
+      failOnStatusCode: false,
+    });
+
+    // 404 rather than 403: the API does not confirm that the identifier exists.
+    expect(created.status()).toBe(202);
+    expect(refused.status()).toBe(404);
   });
 
   test('stops working the moment it is revoked', async ({ page, request }) => {

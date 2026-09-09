@@ -1,11 +1,8 @@
 export {
-  type CorrelationContext,
-  getCorrelationContext,
   getCorrelationId,
   enrichCorrelationContext,
   runWithCorrelationContext,
 } from './correlation-context';
-export { type LogEvent, logEvents } from './log-events';
-export { createLogger, type LogFormat, type LoggerConfiguration, type LogLevel } from './logger';
+export { logEvents } from './log-events';
+export { createLogger } from './logger';
 export { hashRecipient } from './recipient-privacy';
-export { redactedLogPaths, redactionCensorValue } from './redaction';

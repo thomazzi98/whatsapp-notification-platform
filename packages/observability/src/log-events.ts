@@ -34,5 +34,3 @@ export const logEvents = {
   healthDependencyDegraded: 'health.dependency.degraded',
   rateLimiterDegraded: 'ratelimit.degraded',
 } as const;
-
-export type LogEvent = (typeof logEvents)[keyof typeof logEvents];

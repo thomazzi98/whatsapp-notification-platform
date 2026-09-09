@@ -62,12 +62,15 @@ export function Button({
   return (
     <button
       type="button"
-      // Disabled while busy, and it says so: a button that looks available but
-      // silently ignores a second click teaches people to click twice.
-      disabled={isBusy || attributes.disabled}
-      aria-busy={isBusy}
       className={`inline-flex items-center justify-center gap-2 rounded-control border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${buttonClasses[variant]} ${className}`}
       {...attributes}
+      // After the spread, not before it. A caller passing both isBusy and an
+      // explicit disabled — which is every submit button with a validity
+      // condition — used to have the busy guard overwritten by its own
+      // `disabled={false}`, so the button stayed clickable while the request
+      // it had already started was in flight.
+      disabled={isBusy || attributes.disabled}
+      aria-busy={isBusy}
     >
       {children}
     </button>

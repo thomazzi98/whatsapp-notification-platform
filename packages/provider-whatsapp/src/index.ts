@@ -1,5 +1,4 @@
-export { classifyHttpStatus, classifyTransportError } from './classify-failure';
-export { WahaProvider, type WahaProviderOptions } from './waha-provider';
+export { WahaProvider } from './waha-provider';
 export {
   isWebhookSignatureValid,
   isWebhookTimestampAcceptable,
@@ -7,5 +6,4 @@ export {
   toProviderEvent,
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
-  type WebhookEnvelope,
 } from './webhook';

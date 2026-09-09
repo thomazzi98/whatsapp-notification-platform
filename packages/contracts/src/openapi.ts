@@ -326,6 +326,63 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
           },
         },
       },
+      '/webhooks/whatsapp/{whatsAppSessionId}': {
+        post: {
+          tags: ['Callbacks'],
+          summary: 'Receive a provider callback',
+          description:
+            'Called by the WhatsApp provider, not by an integrator. Deliberately outside /v1: ' +
+            'it is authenticated by a signature over the raw request body rather than by an API ' +
+            'key, so mixing it into the public API would put a route with entirely different ' +
+            'authentication behind the same guard. It answers 202 for anything it records, ' +
+            'including a redelivery of an event already filed, because the provider retries ' +
+            'whatever is not answered quickly.',
+          operationId: 'receiveProviderCallback',
+          security: [],
+          parameters: [
+            {
+              name: 'whatsAppSessionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'x-webhook-hmac',
+              in: 'header',
+              required: true,
+              schema: { type: 'string' },
+              description: 'HMAC-SHA512 over the exact bytes of the body, in lowercase hex.',
+            },
+            {
+              name: 'x-webhook-timestamp',
+              in: 'header',
+              required: false,
+              schema: { type: 'string' },
+              description: 'Seconds since the epoch. Outside the tolerance window it is refused.',
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+          responses: {
+            '202': {
+              description: 'Recorded. Says nothing about whether it could be applied.',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { accepted: { type: 'boolean' } },
+                    required: ['accepted'],
+                  },
+                },
+              },
+            },
+            '400': { description: 'The callback arrived without a body.' },
+            '401': { description: 'The signature did not verify, or the timestamp was stale.' },
+          },
+        },
+      },
       '/v1/openapi.json': {
         get: {
           tags: ['Applications'],

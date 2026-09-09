@@ -463,9 +463,16 @@ export function useReadiness(): UseQueryResult<ReadinessResponse> {
   return useQuery({
     queryKey: queryKeys.readiness,
     queryFn: async () => {
+      // A 503 with a body is the answer, not a failure: it carries the reason
+      // each dependency gave. What is a failure is a response that is not the
+      // document at all — a proxy error page, or nothing.
       const response = await fetch('/ready');
 
-      return (await response.json()) as ReadinessResponse;
+      try {
+        return (await response.json()) as ReadinessResponse;
+      } catch {
+        throw new Error(`The API answered ${String(response.status)} without a readiness report.`);
+      }
     },
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,

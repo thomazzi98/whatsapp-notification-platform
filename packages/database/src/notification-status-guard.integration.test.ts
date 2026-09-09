@@ -226,3 +226,125 @@ describe('notification schema constraints', () => {
     ).rejects.toThrow();
   });
 });
+
+/**
+ * A second tenant with a connection of its own, so a test can insert a valid
+ * notification for it and isolate the one reference it is actually about. With
+ * a borrowed session the composite session key fires first and the test passes
+ * for the wrong reason.
+ */
+async function otherTenant(): Promise<{ applicationId: string; sessionId: string }> {
+  notificationCounter += 1;
+  const stamp = `${Date.now().toString(36)}-${String(notificationCounter)}`;
+  const organization = await connection.database.execute<{ id: string }>(sql`
+    insert into organizations (name, slug) values ('Other', ${`other-${stamp}`}) returning id
+  `);
+  const application = await connection.database.execute<{ id: string }>(sql`
+    insert into applications (organization_id, name, slug)
+    values (${organization.rows[0]?.id ?? ''}, 'Other', ${`other-${stamp}`})
+    returning id
+  `);
+  const applicationId = application.rows[0]?.id ?? '';
+  const session = await connection.database.execute<{ id: string }>(sql`
+    insert into whatsapp_sessions
+      (application_id, provider_session_name, display_name, webhook_signing_key_ciphertext)
+    values (${applicationId}, ${`other-${stamp}`}, 'Other', decode('00', 'hex'))
+    returning id
+  `);
+
+  return { applicationId, sessionId: session.rows[0]?.id ?? '' };
+}
+
+/** The driver reports the failed statement; Postgres's reason is on the cause. */
+async function reasonFor(work: Promise<unknown>): Promise<string | undefined> {
+  try {
+    await work;
+    return undefined;
+  } catch (error: unknown) {
+    return (error as { cause?: { message?: string } }).cause?.message;
+  }
+}
+
+describe('references that could reach across a tenant boundary', () => {
+  it('refuses a retry that points at another tenant notification', async () => {
+    // This reference used to be a single column, so it could name any
+    // notification in the table regardless of who owned it.
+    const original = await createNotification('QUEUED');
+    const other = await otherTenant();
+
+    const reason = await reasonFor(
+      connection.database.execute(sql`
+        insert into notifications
+          (id, application_id, whatsapp_session_id, status, recipient_phone_number,
+           rendered_body, retry_of_notification_id)
+        values ('00000000-0000-7000-8000-ffffffffff10', ${other.applicationId}, ${other.sessionId},
+                'QUEUED', '+5511999998888', 'Hello', ${original})
+      `),
+    );
+
+    expect(reason).toContain('notifications_retry_of_fkey');
+  });
+
+  it('refuses a notification that claims another tenant idempotency key', async () => {
+    // This reference did not exist at all: the column named a row in a table
+    // the database was never asked to check.
+    const claim = await connection.database.execute<{ id: string }>(sql`
+      insert into idempotency_keys
+        (application_id, key, request_method, request_path, request_fingerprint,
+         lock_token, state, expires_at)
+      values (${applicationId}, ${`key-${Date.now().toString(36)}`}, 'POST', '/v1/notifications',
+              decode('00', 'hex'), gen_random_uuid(), 'COMPLETED', now() + interval '1 day')
+      returning id
+    `);
+
+    const other = await otherTenant();
+
+    const reason = await reasonFor(
+      connection.database.execute(sql`
+        insert into notifications
+          (id, application_id, whatsapp_session_id, status, recipient_phone_number,
+           rendered_body, idempotency_key_id)
+        values ('00000000-0000-7000-8000-ffffffffff11', ${other.applicationId}, ${other.sessionId},
+                'QUEUED', '+5511999998888', 'Hello', ${claim.rows[0]?.id ?? ''})
+      `),
+    );
+
+    expect(reason).toContain('notifications_idempotency_key_fkey');
+  });
+
+  it('lets the expiry reaper delete a claim a notification still names', async () => {
+    // A plain ON DELETE SET NULL on a composite key nulls every referencing
+    // column, application_id included — and that column is NOT NULL, so the
+    // reaper would have failed on the first row it touched.
+    const key = `key-${Date.now().toString(36)}-reaper`;
+    const claim = await connection.database.execute<{ id: string }>(sql`
+      insert into idempotency_keys
+        (application_id, key, request_method, request_path, request_fingerprint,
+         lock_token, state, expires_at)
+      values (${applicationId}, ${key}, 'POST', '/v1/notifications',
+              decode('00', 'hex'), gen_random_uuid(), 'COMPLETED', now() - interval '1 day')
+      returning id
+    `);
+    const notificationId = '00000000-0000-7000-8000-ffffffffff12';
+    await connection.database.execute(sql`
+      insert into notifications
+        (id, application_id, whatsapp_session_id, status, recipient_phone_number,
+         rendered_body, idempotency_key_id)
+      values (${notificationId}, ${applicationId}, ${sessionId}, 'QUEUED', '+5511999998888',
+              'Hello', ${claim.rows[0]?.id ?? ''})
+    `);
+
+    await connection.database.execute(sql`
+      delete from idempotency_keys where id = ${claim.rows[0]?.id ?? ''}
+    `);
+
+    const after = await connection.database.execute<{
+      application_id: string;
+      idempotency_key_id: string | null;
+    }>(sql`
+      select application_id, idempotency_key_id from notifications where id = ${notificationId}
+    `);
+    expect(after.rows[0]?.idempotency_key_id).toBeNull();
+    expect(after.rows[0]?.application_id).toBe(applicationId);
+  });
+});

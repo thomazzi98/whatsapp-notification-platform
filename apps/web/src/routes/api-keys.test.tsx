@@ -75,6 +75,9 @@ describe('API keys', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create key' }));
 
     expect(await screen.findByText('Copy this key now')).toBeInTheDocument();
+    // Announced, not merely rendered: it appears above a form that was just
+    // submitted, so a reader who cannot see it has to be told.
+    expect(screen.getByRole('status')).toHaveTextContent('Copy this key now');
     expect(
       screen.getByText('wnp_test_abcdefghijklMNOPQRSTUVWXYZ0123456789abcd'),
     ).toBeInTheDocument();

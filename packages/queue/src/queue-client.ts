@@ -69,6 +69,15 @@ export async function bootstrapQueues(connectionUrl: string, schema: string): Pr
 export async function provisionQueues(connectionUrl: string, schema: string): Promise<void> {
   const boss = new PgBoss({ connectionString: connectionUrl, schema, migrate: true });
 
+  // The same reason createQueueClient demands a listener: an EventEmitter that
+  // emits `error` with nobody listening terminates the process. This one is
+  // short-lived, but a database hiccup during migration should fail the
+  // bootstrap with a message rather than an unhandled event.
+  boss.on('error', (error: Error) => {
+    process.stderr.write(`The queue client reported a failure while provisioning: ${error.message}
+`);
+  });
+
   await boss.start();
 
   try {

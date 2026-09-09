@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 
 import { useReadiness } from '../api/queries';
-import { Badge, Loading, Panel } from '../components/ui';
+import { Alert, Badge, Loading, Panel } from '../components/ui';
 
 export function SystemStatusPage(): ReactNode {
   const readiness = useReadiness();
@@ -12,6 +12,16 @@ export function SystemStatusPage(): ReactNode {
       description="What this API instance reports about the dependencies it needs to work."
     >
       {readiness.isPending && <Loading label="Checking…" />}
+
+      {readiness.isError && (
+        <div className="px-4 py-4">
+          {/* The screen an operator opens precisely when things are wrong must
+              not answer with an empty panel. */}
+          <Alert title="Could not reach the API">
+            {readiness.error.message} This page keeps trying.
+          </Alert>
+        </div>
+      )}
 
       {readiness.data !== undefined && (
         <div className="flex flex-col gap-4 px-4 py-4">

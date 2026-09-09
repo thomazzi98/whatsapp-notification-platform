@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
+const SELF = 'tools/scripts/verify-secrets.mjs';
 
 /**
  * Shannon entropy per character. A generated secret sits near 6 bits; a
@@ -141,8 +142,7 @@ function scanWorkingTree() {
   const findings = [];
 
   for (const file of trackedFiles()) {
-    // This scanner's own samples are secrets by construction.
-    if (file === 'tools/scripts/verify-secrets.mjs') {
+    if (file === SELF) {
       continue;
     }
 
@@ -175,17 +175,24 @@ function scanHistory() {
 
   const findings = [];
   let commit = 'unknown';
+  let file = '';
 
   for (const line of patch.split('\n')) {
     if (line.startsWith('commit ')) {
       commit = line.slice(7, 14);
       continue;
     }
-    if (!line.startsWith('+')) {
+    if (line.startsWith('+++ b/')) {
+      file = line.slice(6);
+      continue;
+    }
+    // This file's own samples are secrets by construction, in the working tree
+    // and in every commit that has ever touched it.
+    if (file === SELF || !line.startsWith('+')) {
       continue;
     }
     for (const secret of findSecrets(line)) {
-      findings.push(`${commit}: ${secret.rule} (${secret.sample})`);
+      findings.push(`${commit}: ${file}: ${secret.rule} (${secret.sample})`);
     }
   }
 

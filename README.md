@@ -191,8 +191,23 @@ component in jsdom, and over each route in a real browser, where the rules that
 need layout and colour can actually run. It has already earned its place —
 the first run found two colour pairs below the contrast threshold.
 
-Other tasks: `pnpm lint`, `pnpm typecheck`, `pnpm verify:layers`,
-`pnpm verify:packaging`, `pnpm format`.
+Alongside the tests, six checks that answer questions a test cannot. Each one
+was written because the thing it checks had already gone wrong once.
+
+| Command                 | Refuses                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `pnpm verify:layers`    | An import that crosses a layer — a controller reaching into an adapter          |
+| `pnpm verify:unused`    | A file, dependency or export nothing uses                                       |
+| `pnpm verify:packaging` | A package whose manifest points at a file the build never emitted               |
+| `pnpm verify:docs`      | A dead documentation link, a diagram that no longer parses, an unindexed record |
+| `pnpm verify:secrets`   | A credential in the working tree or anywhere in the history                     |
+| `pnpm audit --prod`     | A known vulnerability in anything that ships                                    |
+
+The secret scanner self-tests before it runs: it classifies known secrets and
+known fixtures first, and fails if it gets either wrong. A scanner that has
+quietly stopped matching reports success, which is worse than not running.
+
+Also `pnpm format`, and `pnpm build`.
 
 ```bash
 docker compose up --watch

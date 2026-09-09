@@ -32,7 +32,14 @@ function CreatedKeyNotice({
   onDismiss: () => void;
 }): ReactNode {
   return (
-    <div className="border-b border-border bg-accent-subtle px-4 py-4">
+    <div
+      // The one moment a usable credential exists, announced. It appears above
+      // a form the reader has just submitted, so without a live region a
+      // screen-reader user is never told it arrived at all.
+      role="status"
+      aria-live="polite"
+      className="border-b border-border bg-accent-subtle px-4 py-4"
+    >
       <p className="text-sm font-semibold text-ink">Copy this key now</p>
       <p className="mt-0.5 text-sm text-ink-muted">
         This is the only time it can be read. The platform stores a hash, so it cannot show it again

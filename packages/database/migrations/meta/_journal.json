@@ -57,6 +57,13 @@
       "when": 1788954076059,
       "tag": "0007_tenant_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789040476059,
+      "tag": "0008_cross_tenant_references",
+      "breakpoints": true
     }
   ]
 }

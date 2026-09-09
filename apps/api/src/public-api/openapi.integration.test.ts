@@ -72,7 +72,13 @@ describe('the published description of the API', () => {
     const undocumented = registeredRoutes
       // Fastify answers HEAD for every GET on its own. That is transport
       // behaviour rather than contract, and describing it would be noise.
-      .filter((route) => route.method !== 'head' && route.url.startsWith('/v1/'))
+      // Both public surfaces. Scoping this to /v1 left the provider callback —
+      // a public, documented-contract route — invisible to the check.
+      .filter(
+        (route) =>
+          route.method !== 'head' &&
+          (route.url.startsWith('/v1/') || route.url.startsWith('/webhooks/')),
+      )
       .map((route) => `${route.method} ${toOpenApiPath(route.url)}`)
       .filter((operation) => !documentedOperations().has(operation));
 

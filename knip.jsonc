@@ -25,7 +25,7 @@
       "includeEntryExports": true,
     },
     "apps/end-to-end": {
-      "entry": ["tests/**/*.spec.ts", "playwright.config.ts"],
+      "entry": ["tests/**/*.spec.ts"],
     },
 
     // Plumbing packages exist to serve this repository and nothing else, so an

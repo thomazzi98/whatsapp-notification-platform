@@ -7,6 +7,7 @@ import {
   jsonb,
   pgTable,
   text,
+  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -45,6 +46,10 @@ export const idempotencyKeys = pgTable(
     // Scoped per application, never globally: a global scope would let one
     // tenant's key collide with another's.
     uniqueIndex('idempotency_keys_application_key_unique').on(table.applicationId, table.key),
+    // The target of the notifications composite foreign key: a reference has
+    // to name the tenant as well as the row for the tenant to be part of what
+    // the database checks.
+    unique('idempotency_keys_application_id_unique').on(table.applicationId, table.id),
     index('idempotency_keys_expiry_index').on(table.expiresAt),
     // Takeover of claims abandoned by a crashed instance. Partial, so it stays
     // tiny even though the table holds a day of traffic.

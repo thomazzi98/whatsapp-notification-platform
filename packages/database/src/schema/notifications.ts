@@ -16,6 +16,7 @@ import {
 
 import { applications } from './applications';
 import { createdAtColumn, timestampColumn, updatedAtColumn } from './columns';
+import { idempotencyKeys } from './idempotency-keys';
 import { templates } from './templates';
 import { whatsAppSessions } from './whatsapp-sessions';
 
@@ -146,10 +147,20 @@ export const notifications = pgTable(
       columns: [table.applicationId, table.templateId],
       foreignColumns: [templates.applicationId, templates.id],
     }).onDelete('restrict'),
+    // Composite like the others. A single-column reference here would let a
+    // retry point at another tenant's notification, which is exactly what the
+    // rest of the schema is shaped to prevent.
     foreignKey({
       name: 'notifications_retry_of_fkey',
-      columns: [table.retryOfNotificationId],
-      foreignColumns: [table.id],
+      columns: [table.applicationId, table.retryOfNotificationId],
+      foreignColumns: [table.applicationId, table.id],
+    }).onDelete('set null'),
+    // The idempotency claim had no reference at all, so a notification could
+    // name another tenant's key row and nothing would object.
+    foreignKey({
+      name: 'notifications_idempotency_key_fkey',
+      columns: [table.applicationId, table.idempotencyKeyId],
+      foreignColumns: [idempotencyKeys.applicationId, idempotencyKeys.id],
     }).onDelete('set null'),
 
     check(
