@@ -307,6 +307,33 @@ describe('connecting WhatsApp', () => {
     expect(code.statusCode).toBe(409);
   });
 
+  it('records a pairing the provider has lost as stopped, so nothing sends through it', async () => {
+    const connection = await createConnection();
+    await fetch(`${stubBaseUrl}/__stub/sessions/${connection.providerSessionName}/scan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: '5511999990000' }),
+    });
+    const paired = await dashboardRequest(
+      'GET',
+      `/dashboard/applications/${connection.tenant.applicationId}/whatsapp-sessions/${connection.sessionId}`,
+      { tenant: connection.tenant },
+    );
+    expect(paired.body.status).toBe('WORKING');
+
+    // The provider forgets everything: a wiped volume, a restarted stand-in.
+    await fetch(`${stubBaseUrl}/__stub/reset`, { method: 'POST' });
+
+    const read = await dashboardRequest(
+      'GET',
+      `/dashboard/applications/${connection.tenant.applicationId}/whatsapp-sessions/${connection.sessionId}`,
+      { tenant: connection.tenant },
+    );
+
+    expect(read.body.status).toBe('STOPPED');
+    expect(read.body.lastError).toContain('no longer has this connection');
+  });
+
   it("refuses to read another tenant's connection", async () => {
     const connection = await createConnection();
     const intruder = await createTenant();

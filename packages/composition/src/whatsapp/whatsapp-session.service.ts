@@ -162,8 +162,25 @@ export class WhatsAppSessionService {
     const record = await this.getOrFail(applicationId, sessionId);
     const live = await this.provider.getSession(record.providerSessionName);
 
-    if (live.outcome === 'failed' || live.value === undefined) {
+    if (live.outcome === 'failed') {
       return record;
+    }
+
+    if (live.value === undefined) {
+      // The provider no longer has this connection: its state was wiped, or it
+      // was removed behind the platform's back. That is an answer, and it has
+      // to be written down, or a record still saying WORKING keeps being
+      // chosen for sends that can only fail until somebody reconnects.
+      if (record.status !== 'STOPPED') {
+        await this.sessions.recordStatus(sessionId, {
+          status: 'STOPPED',
+          phoneNumber: record.phoneNumber,
+          pushName: record.pushName,
+          lastError: 'The WhatsApp provider no longer has this connection. Connect it again.',
+          now: this.clock.now(),
+        });
+      }
+      return this.getOrFail(applicationId, sessionId);
     }
 
     await this.sessions.recordStatus(sessionId, {
