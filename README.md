@@ -153,6 +153,13 @@ The provider is not published to the network. It holds a paired WhatsApp account
 and its own API has no per-tenant authorization, so it is infrastructure this
 platform speaks to rather than a boundary anyone else may reach.
 
+`docker-compose.demo.yml` is an overlay for running beside the
+[payment gateway](https://github.com/thomazzi98/mini-payment-gateway): it joins
+the API to an external `payment-demo` network under the name
+`whatsapp-notification`, where the gateway hands paid events to the ordinary
+public API with its own key. Nothing else changes, and the gateway's own
+repository documents the whole flow.
+
 The API exposes two probes with deliberately different meanings. `/health` is
 liveness and checks no dependency at all — a liveness probe that touches the
 database turns a thirty-second blip into a restart storm. `/ready` checks

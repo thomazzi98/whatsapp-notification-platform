@@ -1,0 +1,23 @@
+# The cross-service demonstration overlay.
+#
+#   docker network create payment-demo
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile stub up -d --build
+#
+# Joins the API to `payment-demo`, an external network shared with the payment
+# gateway and CryptoPay, each brought up from its own repository. The API answers
+# to `whatsapp-notification` there, which is the hostname the gateway hands paid
+# events to over the ordinary public API. Nothing else is exposed: the provider,
+# the database and the dashboard stay where they were.
+services:
+  api:
+    # `default` is named explicitly because declaring any network here replaces
+    # the implicit one, and the API must keep reaching postgres and the provider.
+    networks:
+      default: {}
+      payment-demo:
+        aliases:
+          - whatsapp-notification
+
+networks:
+  payment-demo:
+    external: true
