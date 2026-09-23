@@ -4,13 +4,13 @@ import {
   createTestConfiguration,
   type TestDatabaseHandle,
 } from '@platform/testing';
-import fastifyCookie from '@fastify/cookie';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
+import pino from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 import { ApiModule } from '../api.module';
-import { ProblemDetailsFilter } from '../http/filters/problem-details.filter';
+import { configureHttp } from '../http/configure-http';
 
 /**
  * The boundary a separate service consumes, exercised the way it will consume it.
@@ -99,14 +99,16 @@ beforeAll(async () => {
     imports: [ApiModule.forConfiguration(configuration)],
   }).compile();
 
-  application = moduleReference.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-  await application.register(fastifyCookie);
-  application.useGlobalFilters(
-    new ProblemDetailsFilter(
-      { error: () => undefined, info: () => undefined } as never,
-      configuration.http.publicBaseUrl,
-    ),
+  // The production HTTP stack, parser included: this suite stands in for a real
+  // client, so it has to meet what a real client meets.
+  application = moduleReference.createNestApplication<NestFastifyApplication>(
+    new FastifyAdapter(),
+    { bodyParser: false },
   );
+  await configureHttp(application, {
+    logger: pino({ level: 'silent' }),
+    publicBaseUrl: configuration.http.publicBaseUrl,
+  });
   await application.init();
   await application.getHttpAdapter().getInstance().ready();
 }, 180_000);
@@ -363,6 +365,59 @@ describe('how a consuming service is told it went wrong', () => {
     // Which field, and why: a consuming service should not have to parse prose
     // to find out what it sent wrong.
     expect(invalid.body.errors).toBeInstanceOf(Array);
+  });
+
+  it('refuses a body that is not UTF-8, rather than delivering it garbled', async () => {
+    const consumer = await provisionConsumer();
+    // "notificações" as a Windows terminal in the ANSI code page sends it: the
+    // two accented letters are single bytes that are not valid UTF-8. Decoding
+    // leniently turned them into U+FFFD, answered 202, and the recipient read
+    // "notifica��es".
+    const latin1 = Buffer.concat([
+      Buffer.from('{"recipient":"+5511999998888","body":"notifica'),
+      Buffer.from([0xe7, 0xf5]),
+      Buffer.from('es"}'),
+    ]);
+
+    const response = await application.inject({
+      method: 'POST',
+      url: '/v1/notifications',
+      headers: { ...consumer.baseHeaders, 'content-type': 'application/json' },
+      payload: latin1,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<Record<string, unknown>>().detail).toMatch(/utf-8/i);
+  });
+
+  it('delivers accented text and emoji exactly as they were sent', async () => {
+    const consumer = await provisionConsumer();
+
+    const accepted = await requestNotification(consumer, {
+      body: 'Pagamento aprovado ✅ — ação concluída',
+    });
+    const read = await call({
+      method: 'GET',
+      url: `/v1/notifications/${String(accepted.body.id)}`,
+      headers: consumer.baseHeaders,
+    });
+
+    expect(read.body.body).toBe('Pagamento aprovado ✅ — ação concluída');
+  });
+
+  it('refuses a body that tries to set an object prototype', async () => {
+    const consumer = await provisionConsumer();
+
+    const response = await application.inject({
+      method: 'POST',
+      url: '/v1/notifications',
+      headers: { ...consumer.baseHeaders, 'content-type': 'application/json' },
+      payload:
+        '{"recipient":"+5511999998888","body":"x","metadata":{"__proto__":{"polluted":"yes"}}}',
+    });
+
+    // Fastify's own parser refuses this; a bare JSON.parse accepted it.
+    expect(response.statusCode).toBe(400);
   });
 
   it('paces a consumer with standard headers rather than only refusing it', async () => {

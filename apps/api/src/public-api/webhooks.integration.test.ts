@@ -7,16 +7,14 @@ import {
   type TestDatabaseHandle,
 } from '@platform/testing';
 import { createStubServer } from '@platform/waha-stub';
-import fastifyCookie from '@fastify/cookie';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
+import pino from 'pino';
 import { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 import { ApiModule } from '../api.module';
-import { registerCorrelationHook } from '../http/correlation/correlation.hook';
-import { ProblemDetailsFilter } from '../http/filters/problem-details.filter';
-import { registerRawBodyParser } from '../http/raw-body';
+import { configureHttp } from '../http/configure-http';
 
 const stubApiKey = 'webhook-integration-stub-key';
 
@@ -79,18 +77,10 @@ beforeAll(async () => {
       bodyParser: false,
     },
   );
-  await application.register(fastifyCookie);
-  registerRawBodyParser(application.getHttpAdapter().getInstance());
-  registerCorrelationHook(application.getHttpAdapter().getInstance(), {
-    info: () => undefined,
-    debug: () => undefined,
-  } as never);
-  application.useGlobalFilters(
-    new ProblemDetailsFilter(
-      { error: () => undefined, info: () => undefined } as never,
-      configuration.http.publicBaseUrl,
-    ),
-  );
+  await configureHttp(application, {
+    logger: pino({ level: 'silent' }),
+    publicBaseUrl: configuration.http.publicBaseUrl,
+  });
   await application.init();
   // Listening for real, because the point of this suite is that the provider
   // reaches the API over the network with a signature it computed itself.

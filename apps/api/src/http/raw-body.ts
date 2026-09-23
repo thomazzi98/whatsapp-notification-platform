@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
 
 /** Requests under this prefix keep the exact bytes that arrived. */
@@ -11,8 +12,21 @@ export function readRawBody(request: FastifyRequest): Buffer | undefined {
   return (request as RequestWithRawBody).rawBody;
 }
 
-interface ParseFailure extends Error {
-  statusCode?: number;
+/**
+ * JSON is UTF-8 by definition (RFC 8259). Decoding leniently replaced every
+ * invalid byte with U+FFFD, so a client with an encoding bug -- a Windows
+ * terminal passing accented text through its ANSI code page, for one -- got a
+ * 202 and its recipient got "notifica��es". Refusing the request puts the bug
+ * in front of the developer who can fix it instead of the customer who cannot.
+ */
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+
+function decodeStrictly(body: Buffer): string | undefined {
+  try {
+    return strictUtf8.decode(body);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -28,6 +42,11 @@ interface ParseFailure extends Error {
  * the API serves.
  */
 export function registerRawBodyParser(instance: FastifyInstance): void {
+  // Fastify's own parser does the parsing, for what it refuses: a body carrying
+  // __proto__ or constructor.prototype. Replacing it with a bare JSON.parse, as
+  // this used to, quietly dropped that protection.
+  const parseJson = instance.getDefaultJsonParser('error', 'error');
+
   instance.addContentTypeParser(
     'application/json',
     { parseAs: 'buffer' },
@@ -41,15 +60,23 @@ export function registerRawBodyParser(instance: FastifyInstance): void {
         return;
       }
 
-      try {
-        done(null, JSON.parse(body.toString('utf8')));
-      } catch (error: unknown) {
-        const failure = error as ParseFailure;
-        // Without the status the default handler reports a 500 for what is
-        // plainly a malformed request.
-        failure.statusCode = 400;
-        done(failure, undefined);
+      const text = decodeStrictly(body);
+      if (text === undefined) {
+        // An HTTP exception rather than an Error carrying a status: Nest only
+        // translates a SyntaxError on its own, and hands anything else to the
+        // filter, which reports it as the 500 it looks like.
+        done(
+          new BadRequestException(
+            'The request body is not valid UTF-8. Send JSON encoded as UTF-8.',
+          ),
+          undefined,
+        );
+        return;
       }
+
+      // Typed as possibly asynchronous; Fastify's default parser reports
+      // through `done` and returns nothing.
+      void parseJson(request, text, done);
     },
   );
 }

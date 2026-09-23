@@ -1,13 +1,10 @@
 import { type ApplicationConfiguration } from '@platform/configuration';
 import { createLogger, logEvents } from '@platform/observability';
-import fastifyCookie from '@fastify/cookie';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { ApiModule } from './api.module';
-import { registerCorrelationHook } from './http/correlation/correlation.hook';
-import { registerRawBodyParser } from './http/raw-body';
-import { ProblemDetailsFilter } from './http/filters/problem-details.filter';
+import { configureHttp } from './http/configure-http';
 
 export interface RunningApi {
   readonly application: NestFastifyApplication;
@@ -51,10 +48,7 @@ export async function bootstrapApi(configuration: ApplicationConfiguration): Pro
     },
   );
 
-  await application.register(fastifyCookie);
-  registerRawBodyParser(adapter.getInstance());
-  registerCorrelationHook(adapter.getInstance(), logger);
-  application.useGlobalFilters(new ProblemDetailsFilter(logger, configuration.http.publicBaseUrl));
+  await configureHttp(application, { logger, publicBaseUrl: configuration.http.publicBaseUrl });
   application.enableShutdownHooks();
 
   await application.listen(configuration.http.port, configuration.http.host);
