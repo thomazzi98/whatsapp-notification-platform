@@ -164,6 +164,13 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
 
         const applyAction: Record<typeof action, () => void> = {
           start: () => {
+            // Observed against noweb-2026.8.2: start on a session whose codes
+            // ran out answers 201 and changes nothing. The stub used to start
+            // it anyway, which is exactly what hid the dashboard's Start button
+            // doing nothing for anyone who took too long to scan.
+            if (session.status === 'FAILED') {
+              return;
+            }
             sessions.start(session, Date.now());
           },
           restart: () => {

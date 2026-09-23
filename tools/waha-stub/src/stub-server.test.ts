@@ -180,6 +180,19 @@ describe('QR codes', () => {
     expect(first.body.data).not.toBe(second.body.data);
   });
 
+  it('ignores start on a session whose codes ran out, as the real engine does', async () => {
+    await call({ method: 'POST', url: '/api/sessions', payload: { name: 'default', start: true } });
+    for (let attempt = 0; attempt < MAXIMUM_QR_ATTEMPTS; attempt += 1) {
+      await call({ method: 'POST', url: '/__stub/sessions/default/expire-qr' });
+    }
+
+    const started = await call({ method: 'POST', url: '/api/sessions/default/start' });
+
+    // Observed against noweb-2026.8.2 on 2026-09-23. Starting it anyway is what
+    // made the stub hide a dashboard that could not recover from a slow scan.
+    expect(started.body.status).toBe('FAILED');
+  });
+
   it('refuses to serve a code when the session is not waiting for one', async () => {
     await createWorkingSession();
     const response = await call({ method: 'GET', url: '/api/default/auth/qr' });

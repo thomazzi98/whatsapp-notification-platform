@@ -126,6 +126,28 @@ describe('session lifecycle', () => {
     }
   });
 
+  it('offers a fresh round of codes once the last round expired unscanned', async () => {
+    await provider.createSession({
+      sessionName: 'default',
+      webhookUrl: unreachableReceiver,
+      webhookSigningKey: 'a-signing-key',
+      start: true,
+    });
+    // Six codes, then the engine gives up on the session.
+    for (let code = 0; code < 6; code += 1) {
+      await fetch(`${baseUrl}/__stub/sessions/default/expire-qr`, { method: 'POST' });
+    }
+
+    const restarted = await provider.startSession('default');
+
+    // Found against real WAHA: start on a FAILED session is a no-op, so the
+    // dashboard's Start button left anyone who scanned too slowly stuck.
+    expect(restarted.outcome).toBe('succeeded');
+    if (restarted.outcome === 'succeeded') {
+      expect(restarted.value.status).toBe('SCAN_QR_CODE');
+    }
+  });
+
   it('reads an unrecognised status permissively rather than failing', async () => {
     // A newer provider release may add states; the poller must degrade rather
     // than crash.

@@ -197,11 +197,25 @@ export class WahaProvider implements WhatsAppProviderPort {
     return this.parseSession(response.value);
   }
 
+  /**
+   * WAHA answers start on a FAILED session -- one whose six codes expired
+   * unscanned -- with a 201 that changes nothing. Stopping it first is what
+   * gets a fresh round of codes; without that, the only way back from a slow
+   * scan was deleting the connection.
+   */
   public async startSession(sessionName: string): Promise<ProviderResult<ProviderSession>> {
-    return this.requestSession({
-      method: 'POST',
-      path: `/api/sessions/${encodeURIComponent(sessionName)}/start`,
-    });
+    const path = `/api/sessions/${encodeURIComponent(sessionName)}`;
+    const started = await this.requestSession({ method: 'POST', path: `${path}/start` });
+
+    if (started.outcome === 'failed' || started.value.status !== 'FAILED') {
+      return started;
+    }
+
+    const stopped = await this.requestSession({ method: 'POST', path: `${path}/stop` });
+    if (stopped.outcome === 'failed') {
+      return stopped;
+    }
+    return this.requestSession({ method: 'POST', path: `${path}/start` });
   }
 
   public async stopSession(sessionName: string): Promise<ProviderResult<ProviderSession>> {
