@@ -18,6 +18,10 @@ export {
 } from './applications';
 export {
   idempotencyKeySchema,
+  MAXIMUM_BATCH_RECIPIENTS,
+  type NotificationBatchCreationRequest,
+  notificationBatchCreationRequestSchema,
+  notificationBatchResponseSchema,
   type NotificationCreationRequest,
   notificationCreationRequestSchema,
   type NotificationEventResponse,

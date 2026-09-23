@@ -5,6 +5,8 @@ import {
 } from '@platform/composition';
 import {
   idempotencyKeySchema,
+  type NotificationBatchCreationRequest,
+  notificationBatchCreationRequestSchema,
   type NotificationCreationRequest,
   notificationCreationRequestSchema,
   type NotificationEventResponse,
@@ -108,6 +110,50 @@ export class NotificationsController {
     }
 
     return toNotificationResponse(result.notification);
+  }
+
+  /**
+   * Accepts one message for several recipients -- a sale announced to every
+   * partner at once.
+   *
+   * Answers with one notification per recipient, in the order given, each with
+   * its own identifier and its own delivery. One Idempotency-Key covers the
+   * whole batch, so a retry replays every notification it created instead of
+   * sending the rest twice.
+   */
+  @Post('batch')
+  @HttpCode(202)
+  @RequireScopes('notifications:write')
+  public async createBatch(
+    @CurrentApiKey() principal: ApiKeyPrincipal,
+    @Body(new ZodValidationPipe(notificationBatchCreationRequestSchema))
+    body: NotificationBatchCreationRequest,
+    @Headers('idempotency-key') suppliedIdempotencyKey: string | undefined,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<{ data: NotificationResponse[] }> {
+    const idempotencyKey = idempotencyKeyPipe.transform(suppliedIdempotencyKey);
+
+    const result = await this.notificationCreation.createBatch({
+      applicationId: principal.applicationId,
+      recipients: body.recipients,
+      body: body.body,
+      ...(body.whatsAppSessionId !== undefined && {
+        whatsAppSessionId: body.whatsAppSessionId,
+      }),
+      ...(body.scheduledAt !== undefined && { scheduledAt: new Date(body.scheduledAt) }),
+      ...(body.maximumAttempts !== undefined && { maximumAttempts: body.maximumAttempts }),
+      metadata: body.metadata,
+      ...(idempotencyKey !== undefined && { idempotencyKey }),
+      requestPath: '/v1/notifications/batch',
+    });
+
+    if (result.wasReplayed) {
+      void reply.header('idempotent-replayed', 'true');
+    }
+
+    return {
+      data: result.notifications.map((notification) => toNotificationResponse(notification)),
+    };
   }
 
   @Get()

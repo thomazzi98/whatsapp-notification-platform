@@ -63,13 +63,14 @@ model of the provider, not the provider.
 
 ### The contract
 
-| Claim                                                    | Status               | Where                                                               |
-| -------------------------------------------------------- | -------------------- | ------------------------------------------------------------------- |
-| The documented statuses are the statuses the API returns | Verified locally     | `packages/contracts/src/openapi.test.ts` asserts them per operation |
-| Request and response bodies match the document           | Verified locally     | The document is generated from the schemas that validate requests   |
-| A consumer needs only a base URL and an API key          | Verified locally     | `apps/api/src/public-api/consumer-contract.integration.test.ts`     |
-| No provider vocabulary reaches a consumer                | Verified locally     | Same file                                                           |
-| Backwards compatibility across versions                  | **Known limitation** | There is one version and no deprecation policy                      |
+| Claim                                                               | Status               | Where                                                               |
+| ------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------- |
+| The documented statuses are the statuses the API returns            | Verified locally     | `packages/contracts/src/openapi.test.ts` asserts them per operation |
+| Request and response bodies match the document                      | Verified locally     | The document is generated from the schemas that validate requests   |
+| A batch creates each recipient once, even when retried concurrently | Verified locally     | `apps/api/src/public-api/consumer-contract.integration.test.ts`     |
+| A consumer needs only a base URL and an API key                     | Verified locally     | `apps/api/src/public-api/consumer-contract.integration.test.ts`     |
+| No provider vocabulary reaches a consumer                           | Verified locally     | Same file                                                           |
+| Backwards compatibility across versions                             | **Known limitation** | There is one version and no deprecation policy                      |
 
 ### Performance
 

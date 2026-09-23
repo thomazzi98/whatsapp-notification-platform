@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   type DatabaseConnection,
+  type DatabaseTransaction,
   IdempotencyKeyRepository,
   type NotificationRecord,
   NotificationRepository,
@@ -27,9 +28,9 @@ import { type PgBoss } from 'pg-boss';
 
 import { DATABASE_CONNECTION, QUEUE_CLIENT } from '../tokens';
 
-export interface CreateNotificationInput {
+/** What every notification request carries, however it is addressed. */
+interface NotificationRequest {
   readonly applicationId: string;
-  readonly recipient: string;
   readonly body: string;
   readonly whatsAppSessionId?: string;
   readonly scheduledAt?: Date;
@@ -39,22 +40,55 @@ export interface CreateNotificationInput {
   readonly requestPath: string;
 }
 
+export interface CreateNotificationInput extends NotificationRequest {
+  readonly recipient: string;
+}
+
+export interface CreateNotificationBatchInput extends NotificationRequest {
+  /** Distinct, in the order the caller gave them. */
+  readonly recipients: readonly string[];
+}
+
 export interface CreateNotificationResult {
   readonly notification: NotificationRecord;
   /** True when an earlier identical request already produced this notification. */
   readonly wasReplayed: boolean;
 }
 
+export interface CreateNotificationBatchResult {
+  /** One per recipient, in the order the recipients were given. */
+  readonly notifications: readonly NotificationRecord[];
+  /** True when an earlier identical request already produced these notifications. */
+  readonly wasReplayed: boolean;
+}
+
+type IdempotencyClaimResult =
+  | {
+      readonly kind: 'fresh';
+      readonly idempotencyKeyId: string | null;
+      readonly lockToken: string;
+    }
+  | {
+      readonly kind: 'completed';
+      readonly resourceId: string | null;
+      readonly responseBody: Record<string, unknown> | null;
+    };
+
 const IDEMPOTENCY_WINDOW_HOURS = 24;
 
 /**
  * Canonicalised so a semantically identical retry produces the same digest
- * regardless of key order in the client's JSON.
+ * regardless of key order in the client's JSON. A single recipient and a list
+ * of them hash differently by construction, so one key cannot be replayed
+ * across the two endpoints.
  */
-function fingerprintRequest(input: CreateNotificationInput): Buffer {
+function fingerprintRequest(
+  input: NotificationRequest,
+  addressing: { readonly recipient: string } | { readonly recipients: readonly string[] },
+): Buffer {
   const canonical = JSON.stringify({
     applicationId: input.applicationId,
-    recipient: input.recipient,
+    ...addressing,
     body: input.body,
     whatsAppSessionId: input.whatsAppSessionId ?? null,
     scheduledAt: input.scheduledAt?.toISOString() ?? null,
@@ -65,6 +99,33 @@ function fingerprintRequest(input: CreateNotificationInput): Buffer {
   });
 
   return createHash('sha256').update(canonical).digest();
+}
+
+function assertScheduleIsInTheFuture(input: NotificationRequest, now: Date): void {
+  if (input.scheduledAt !== undefined && input.scheduledAt.getTime() <= now.getTime()) {
+    throw new DomainError(
+      'invalid_schedule',
+      'A scheduled notification must be scheduled for a time in the future.',
+    );
+  }
+}
+
+/**
+ * A completed batch key records the notifications it created, in request
+ * order. Only a single-recipient request completes without that list, and its
+ * fingerprint can never match a batch's, so a missing list is corruption rather
+ * than a case to handle.
+ */
+function readBatchNotificationIds(responseBody: Record<string, unknown> | null): string[] {
+  const identifiers = responseBody?.notificationIds;
+
+  if (
+    !Array.isArray(identifiers) ||
+    !identifiers.every((identifier): identifier is string => typeof identifier === 'string')
+  ) {
+    throw new Error('A completed batch idempotency key recorded no notifications.');
+  }
+  return identifiers;
 }
 
 @Injectable()
@@ -97,6 +158,21 @@ export class CreateNotificationService {
       throw new Error('The notification could not be read back after it was written.');
     }
     return notification;
+  }
+
+  private async readAllOrFail(
+    notifications: NotificationRepository,
+    applicationId: string,
+    notificationIds: readonly string[],
+  ): Promise<NotificationRecord[]> {
+    const found: NotificationRecord[] = [];
+
+    // One transaction is one connection, so these run one after another
+    // however they are written.
+    for (const notificationId of notificationIds) {
+      found.push(await this.readOrFail(notifications, applicationId, notificationId));
+    }
+    return found;
   }
 
   private async resolveSession(
@@ -135,8 +211,8 @@ export class CreateNotificationService {
   /**
    * Claims the key, or decides what an existing claim means.
    *
-   * A completed claim replays the original notification; an in-flight one is a
-   * genuine conflict, because holding the connection open until the first
+   * A completed claim replays what the first request created; an in-flight one
+   * is a genuine conflict, because holding the connection open until the first
    * request finishes has no clean timeout story and hides the concurrency from
    * the client. A different payload under the same key is a client bug, and
    * answering it with the first response would hide that.
@@ -144,18 +220,14 @@ export class CreateNotificationService {
   private async claimIdempotencyKey(
     idempotencyKeys: IdempotencyKeyRepository,
     transaction: QueryExecutor,
-    input: CreateNotificationInput,
+    input: NotificationRequest,
     fingerprint: Buffer,
     now: Date,
-  ): Promise<{
-    readonly idempotencyKeyId: string | null;
-    readonly lockToken: string;
-    readonly replayOf?: string;
-  }> {
+  ): Promise<IdempotencyClaimResult> {
     const lockToken = this.identifiers.generate();
 
     if (input.idempotencyKey === undefined) {
-      return { idempotencyKeyId: null, lockToken };
+      return { kind: 'fresh', idempotencyKeyId: null, lockToken };
     }
 
     const claim = await idempotencyKeys.claim(transaction, {
@@ -169,7 +241,7 @@ export class CreateNotificationService {
     });
 
     if (claim.outcome === 'claimed') {
-      return { idempotencyKeyId: claim.id, lockToken: claim.lockToken };
+      return { kind: 'fresh', idempotencyKeyId: claim.id, lockToken: claim.lockToken };
     }
 
     if (!claim.record.requestFingerprint.equals(fingerprint)) {
@@ -178,17 +250,87 @@ export class CreateNotificationService {
         'This Idempotency-Key was already used with a different request body.',
       );
     }
-    if (claim.record.state === 'COMPLETED' && claim.record.resourceId !== null) {
+    if (claim.record.state === 'COMPLETED') {
       return {
-        idempotencyKeyId: claim.record.id,
-        lockToken: claim.record.lockToken,
-        replayOf: claim.record.resourceId,
+        kind: 'completed',
+        resourceId: claim.record.resourceId,
+        responseBody: claim.record.responseBody,
       };
     }
 
     throw new DomainError(
       'idempotency_key_in_flight',
       'A request with this Idempotency-Key is already being processed. Retry shortly.',
+    );
+  }
+
+  /**
+   * Writes one notification, its first timeline entry and its dispatch job
+   * inside the caller's transaction. Both creation paths use it, so a batch and
+   * a single request cannot come to disagree about what creating one means.
+   */
+  private async writeNotification(
+    transaction: DatabaseTransaction,
+    notifications: NotificationRepository,
+    draft: {
+      readonly id: string;
+      readonly recipient: string;
+      readonly sessionId: string;
+      readonly idempotencyKeyId: string | null;
+      readonly correlationId: string;
+      readonly request: NotificationRequest;
+    },
+  ): Promise<void> {
+    const { request } = draft;
+    const isScheduled = request.scheduledAt !== undefined;
+    const status: NotificationStatus = isScheduled ? 'SCHEDULED' : 'QUEUED';
+
+    await notifications.insert(transaction, {
+      id: draft.id,
+      applicationId: request.applicationId,
+      whatsAppSessionId: draft.sessionId,
+      templateId: null,
+      status,
+      recipientPhoneNumber: draft.recipient,
+      renderedBody: request.body,
+      templateVariables: null,
+      priority: 0,
+      scheduledAt: request.scheduledAt ?? null,
+      maximumAttempts: request.maximumAttempts ?? 5,
+      idempotencyKeyId: draft.idempotencyKeyId,
+      correlationId: draft.correlationId,
+      metadata: request.metadata,
+    });
+
+    await notifications.appendEvent(transaction, {
+      id: this.identifiers.generate(),
+      applicationId: request.applicationId,
+      notificationId: draft.id,
+      eventType: 'notification.created',
+      fromStatus: null,
+      toStatus: status,
+      attemptNumber: null,
+      // The recipient is masked even here: the timeline is read through
+      // tenant-scoped authorization, but the payload is also copied into logs.
+      payload: { recipient: maskPhoneNumberForLog(draft.recipient), scheduled: isScheduled },
+      correlationId: draft.correlationId,
+    });
+
+    await enqueueInTransaction(
+      this.queue,
+      transaction,
+      queueNames.notificationDispatch,
+      {
+        correlationId: draft.correlationId,
+        notificationId: draft.id,
+        applicationId: request.applicationId,
+      },
+      {
+        singletonKey: draft.id,
+        // Scheduling is a column in Postgres rather than a timer in a
+        // process, so it survives a restart.
+        ...(request.scheduledAt !== undefined && { startAfter: request.scheduledAt }),
+      },
     );
   }
 
@@ -208,19 +350,11 @@ export class CreateNotificationService {
   public async create(input: CreateNotificationInput): Promise<CreateNotificationResult> {
     const recipient = parsePhoneNumber(input.recipient);
     const now = this.clock.now();
+    assertScheduleIsInTheFuture(input, now);
 
-    if (input.scheduledAt !== undefined && input.scheduledAt.getTime() <= now.getTime()) {
-      throw new DomainError(
-        'invalid_schedule',
-        'A scheduled notification must be scheduled for a time in the future.',
-      );
-    }
-
-    const fingerprint = fingerprintRequest(input);
+    const fingerprint = fingerprintRequest(input, { recipient: input.recipient });
     const correlationId = getCorrelationId() ?? this.identifiers.generate();
     const notificationId = this.identifiers.generate();
-    const isScheduled = input.scheduledAt !== undefined;
-    const status: NotificationStatus = isScheduled ? 'SCHEDULED' : 'QUEUED';
 
     return withTenantScope(this.connection.database, input.applicationId, async (transaction) => {
       const notifications = new NotificationRepository(transaction);
@@ -238,62 +372,32 @@ export class CreateNotificationService {
         now,
       );
 
-      if (claim.replayOf !== undefined) {
+      if (claim.kind === 'completed') {
+        // Only a batch completes without a single resource, and a batch
+        // request's fingerprint can never match this one.
+        if (claim.resourceId === null) {
+          throw new Error('A completed idempotency key recorded no notification.');
+        }
         return {
-          notification: await this.readOrFail(notifications, input.applicationId, claim.replayOf),
+          notification: await this.readOrFail(notifications, input.applicationId, claim.resourceId),
           wasReplayed: true,
         };
       }
 
-      await notifications.insert(transaction, {
+      await this.writeNotification(transaction, notifications, {
         id: notificationId,
-        applicationId: input.applicationId,
-        whatsAppSessionId: session.id,
-        templateId: null,
-        status,
-        recipientPhoneNumber: recipient,
-        renderedBody: input.body,
-        templateVariables: null,
-        priority: 0,
-        scheduledAt: input.scheduledAt ?? null,
-        maximumAttempts: input.maximumAttempts ?? 5,
+        recipient,
+        sessionId: session.id,
         idempotencyKeyId: claim.idempotencyKeyId,
         correlationId,
-        metadata: input.metadata,
+        request: input,
       });
-
-      await notifications.appendEvent(transaction, {
-        id: this.identifiers.generate(),
-        applicationId: input.applicationId,
-        notificationId,
-        eventType: 'notification.created',
-        fromStatus: null,
-        toStatus: status,
-        attemptNumber: null,
-        // The recipient is masked even here: the timeline is read through
-        // tenant-scoped authorization, but the payload is also copied into logs.
-        payload: { recipient: maskPhoneNumberForLog(recipient), scheduled: isScheduled },
-        correlationId,
-      });
-
-      await enqueueInTransaction(
-        this.queue,
-        transaction,
-        queueNames.notificationDispatch,
-        { correlationId, notificationId, applicationId: input.applicationId },
-        {
-          singletonKey: notificationId,
-          // Scheduling is a column in Postgres rather than a timer in a
-          // process, so it survives a restart.
-          ...(input.scheduledAt !== undefined && { startAfter: input.scheduledAt }),
-        },
-      );
 
       if (claim.idempotencyKeyId !== null) {
         await idempotencyKeys.complete(transaction, {
           id: claim.idempotencyKeyId,
           lockToken: claim.lockToken,
-          responseStatus: 201,
+          responseStatus: 202,
           responseBody: { id: notificationId },
           resourceId: notificationId,
           now,
@@ -302,6 +406,91 @@ export class CreateNotificationService {
 
       return {
         notification: await this.readOrFail(notifications, input.applicationId, notificationId),
+        wasReplayed: false,
+      };
+    });
+  }
+
+  /**
+   * Creates one notification per recipient, all in one transaction.
+   *
+   * They share a correlation id, because they answer one request, and one
+   * idempotency key, so a retried batch replays every notification it created
+   * rather than creating the rest a second time. They share nothing else: each
+   * is dispatched, retried and acknowledged on its own, so one partner's full
+   * inbox cannot delay or fail the message to the others.
+   */
+  public async createBatch(
+    input: CreateNotificationBatchInput,
+  ): Promise<CreateNotificationBatchResult> {
+    const drafts = input.recipients.map((recipient) => ({
+      id: this.identifiers.generate(),
+      recipient: parsePhoneNumber(recipient),
+    }));
+    const now = this.clock.now();
+    assertScheduleIsInTheFuture(input, now);
+
+    const fingerprint = fingerprintRequest(input, { recipients: input.recipients });
+    const correlationId = getCorrelationId() ?? this.identifiers.generate();
+    const notificationIds = drafts.map((draft) => draft.id);
+
+    return withTenantScope(this.connection.database, input.applicationId, async (transaction) => {
+      const notifications = new NotificationRepository(transaction);
+      const idempotencyKeys = new IdempotencyKeyRepository(transaction);
+      const session = await this.resolveSession(
+        new WhatsAppSessionRepository(transaction),
+        input.applicationId,
+        input.whatsAppSessionId,
+      );
+      const claim = await this.claimIdempotencyKey(
+        idempotencyKeys,
+        transaction,
+        input,
+        fingerprint,
+        now,
+      );
+
+      if (claim.kind === 'completed') {
+        return {
+          notifications: await this.readAllOrFail(
+            notifications,
+            input.applicationId,
+            readBatchNotificationIds(claim.responseBody),
+          ),
+          wasReplayed: true,
+        };
+      }
+
+      // Sequential on purpose: every write shares the transaction's single
+      // connection, so there is nothing to gain from issuing them together.
+      for (const draft of drafts) {
+        await this.writeNotification(transaction, notifications, {
+          id: draft.id,
+          recipient: draft.recipient,
+          sessionId: session.id,
+          idempotencyKeyId: claim.idempotencyKeyId,
+          correlationId,
+          request: input,
+        });
+      }
+
+      if (claim.idempotencyKeyId !== null) {
+        await idempotencyKeys.complete(transaction, {
+          id: claim.idempotencyKeyId,
+          lockToken: claim.lockToken,
+          responseStatus: 202,
+          responseBody: { notificationIds },
+          resourceId: null,
+          now,
+        });
+      }
+
+      return {
+        notifications: await this.readAllOrFail(
+          notifications,
+          input.applicationId,
+          notificationIds,
+        ),
         wasReplayed: false,
       };
     });

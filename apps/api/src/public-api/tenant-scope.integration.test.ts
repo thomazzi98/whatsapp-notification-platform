@@ -277,6 +277,28 @@ describe('a request that writes', () => {
   });
 });
 
+describe('a request that writes several notifications at once', () => {
+  it('accepts a batch, which it could not do unscoped', async () => {
+    const tenant = await createTenant();
+
+    const response = await scopedApplication.inject({
+      method: 'POST',
+      url: '/v1/notifications/batch',
+      headers: { authorization: `Bearer ${tenant.apiKey}`, 'idempotency-key': 'scope-batch' },
+      payload: {
+        recipients: ['+5511999990001', '+5511999990002'],
+        body: 'Nova venda aprovada.',
+      } as never,
+    });
+
+    // The batch writes notifications, timeline entries, queue jobs and the
+    // idempotency claim -- every one of them a table this role cannot reach
+    // until the scope is entered.
+    expect(response.statusCode).toBe(202);
+    expect(response.json<{ data: unknown[] }>().data.length).toBe(2);
+  });
+});
+
 describe('a request that claims an idempotency key', () => {
   it('accepts the first one', async () => {
     const tenant = await createTenant();

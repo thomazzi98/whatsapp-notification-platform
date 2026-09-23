@@ -32,6 +32,21 @@ curl -X POST http://127.0.0.1:3100/v1/notifications \
 The answer is `202 Accepted`, because the message has been accepted rather than
 delivered. Watch the rest happen on the notification's detail page.
 
+To tell several people about one event — a sale announced to every partner —
+send the list instead:
+
+```bash
+curl -X POST http://127.0.0.1:3100/v1/notifications/batch \
+  -H "Authorization: Bearer $WNP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: sale-ORD-4471" \
+  -d '{"recipients":["+5511999990001","+5511999990002"],"body":"New sale: ORD-4471."}'
+```
+
+Each recipient becomes a notification of its own, delivered and retried on its
+own, and one `Idempotency-Key` covers the batch. Sends from one connection are
+paced, so the messages arrive in sequence rather than at once.
+
 ## What it does
 
 - **Accepts and answers immediately.** The request writes and enqueues in one

@@ -3,6 +3,9 @@ import { z } from 'zod';
 
 import {
   idempotencyKeySchema,
+  MAXIMUM_BATCH_RECIPIENTS,
+  notificationBatchCreationRequestSchema,
+  notificationBatchResponseSchema,
   notificationCreationRequestSchema,
   notificationEventResponseSchema,
   notificationListResponseSchema,
@@ -149,7 +152,9 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
         Problem: problemSchema,
         NotificationStatus: toResponseSchema(z.enum(notificationStatuses)),
         NotificationCreationRequest: toRequestSchema(notificationCreationRequestSchema),
+        NotificationBatchCreationRequest: toRequestSchema(notificationBatchCreationRequestSchema),
         Notification: toResponseSchema(notificationResponseSchema),
+        NotificationBatch: toResponseSchema(notificationBatchResponseSchema),
         NotificationList: toResponseSchema(notificationListResponseSchema),
         NotificationEvent: toResponseSchema(notificationEventResponseSchema),
       },
@@ -253,6 +258,71 @@ export function buildOpenApiDocument(options: OpenApiDocumentOptions): Record<st
             '400': problemResponse('The cursor, or one of the query filters, is not valid.'),
             '401': problemResponse('The API key is missing or not valid.'),
             '403': problemResponse('The API key lacks the notifications:read scope.'),
+            '429': problemResponse('The rate limit was exceeded. See retry-after.'),
+          },
+        },
+      },
+      '/v1/notifications/batch': {
+        post: {
+          tags: ['Notifications'],
+          summary: 'Accept one message for several recipients',
+          description:
+            `Creates one notification per recipient -- up to ${String(MAXIMUM_BATCH_RECIPIENTS)} -- ` +
+            'in a single transaction, and answers with all of them in the order the recipients ' +
+            'were given. Each is delivered, retried and acknowledged on its own. Sends from one ' +
+            'WhatsApp connection are paced to avoid a ban, so the messages arrive in sequence ' +
+            'rather than at once.',
+          operationId: 'createNotificationBatch',
+          parameters: [
+            {
+              name: 'Idempotency-Key',
+              in: 'header',
+              required: false,
+              schema: toRequestSchema(idempotencyKeySchema),
+              description:
+                'Covers the whole batch: a retry replays every notification the first request ' +
+                'created. Scoped to the application, and valid for 24 hours.',
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotificationBatchCreationRequest' },
+              },
+            },
+          },
+          responses: {
+            '202': {
+              description: 'Every notification in the batch, accepted for delivery.',
+              headers: {
+                ...rateLimitHeaders,
+                'idempotent-replayed': {
+                  schema: { type: 'string', enum: ['true'] },
+                  description: 'Present when this response replays an earlier identical request.',
+                },
+              },
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/NotificationBatch' },
+                },
+              },
+            },
+            '400': problemResponse(
+              'The body could not be parsed or failed validation -- an invalid or repeated ' +
+                'recipient, or too many of them -- or the Idempotency-Key header is empty or too long.',
+            ),
+            '401': problemResponse('The API key is missing or not valid.'),
+            '403': problemResponse('The API key lacks the notifications:write scope.'),
+            '404': problemResponse('The whatsAppSessionId does not belong to this application.'),
+            '409': problemResponse(
+              'A request with this Idempotency-Key is still in flight, or the application has ' +
+                'no connected WhatsApp session to send from.',
+            ),
+            '422': problemResponse(
+              'The request is well formed but cannot be acted on — a schedule in the past, or ' +
+                'an Idempotency-Key already used with a different body.',
+            ),
             '429': problemResponse('The rate limit was exceeded. See retry-after.'),
           },
         },

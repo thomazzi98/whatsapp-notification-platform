@@ -140,6 +140,7 @@ describe('the statuses each operation documents', () => {
   it.each([
     ['get /v1/notifications', ['200', '400', '401', '403', '429']],
     ['post /v1/notifications', ['202', '400', '401', '403', '404', '409', '422', '429']],
+    ['post /v1/notifications/batch', ['202', '400', '401', '403', '404', '409', '422', '429']],
     ['get /v1/notifications/{notificationId}', ['200', '400', '401', '403', '404', '429']],
     ['get /v1/notifications/{notificationId}/events', ['200', '400', '401', '403', '404', '429']],
     [

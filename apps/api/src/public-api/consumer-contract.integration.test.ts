@@ -186,6 +186,45 @@ async function requestNotification(
   });
 }
 
+/** The partners in the scenario the batch endpoint exists for: one sale, three people. */
+const partners = ['+5511999990001', '+5511999990002', '+5511999990003'];
+
+async function requestBatch(
+  consumer: Consumer,
+  options: {
+    readonly recipients?: readonly string[];
+    readonly idempotencyKey?: string;
+    readonly body?: string;
+  } = {},
+): Promise<JsonResponse> {
+  return call({
+    method: 'POST',
+    url: '/v1/notifications/batch',
+    headers: {
+      ...consumer.baseHeaders,
+      ...(options.idempotencyKey !== undefined && { 'idempotency-key': options.idempotencyKey }),
+    },
+    payload: {
+      recipients: options.recipients ?? partners,
+      body: options.body ?? 'Nova venda: pedido ORD-4471 aprovado.',
+    },
+  });
+}
+
+function notificationIdsOf(response: JsonResponse): string[] {
+  return (response.body.data as { id: string }[]).map((notification) => notification.id);
+}
+
+async function countNotifications(consumer: Consumer): Promise<number> {
+  const listed = await call({
+    method: 'GET',
+    url: '/v1/notifications',
+    headers: consumer.baseHeaders,
+  });
+
+  return (listed.body.data as unknown[]).length;
+}
+
 describe('what a consuming service needs to send a notification', () => {
   it('accepts a bearer key and a body, and nothing else', async () => {
     const consumer = await provisionConsumer();
@@ -214,6 +253,106 @@ describe('what a consuming service needs to send a notification', () => {
     const response = await requestNotification(readOnly);
 
     expect(response.statusCode).toBe(403);
+  });
+});
+
+describe('telling several people about one event', () => {
+  it('creates one notification per recipient, in the order they were given', async () => {
+    const consumer = await provisionConsumer();
+
+    const response = await requestBatch(consumer);
+    const data = response.body.data as { id: string; recipient: string; status: string }[];
+
+    expect(response.statusCode).toBe(202);
+    expect(data.map((notification) => notification.recipient)).toStrictEqual(partners);
+    expect(new Set(data.map((notification) => notification.id)).size).toBe(partners.length);
+    expect(data.every((notification) => notification.status === 'QUEUED')).toBe(true);
+  });
+
+  it('describes each notification only in fields the document publishes', async () => {
+    const consumer = await provisionConsumer();
+
+    const response = await requestBatch(consumer);
+    const [first] = response.body.data as Record<string, unknown>[];
+
+    expect(Object.keys(first ?? {})).toStrictEqual(
+      Object.keys(first ?? {}).filter((field) => notificationFields.includes(field)),
+    );
+  });
+
+  it('replays the whole batch under one key rather than sending it twice', async () => {
+    const consumer = await provisionConsumer();
+    const key = 'sale-ORD-4471';
+
+    const first = await requestBatch(consumer, { idempotencyKey: key });
+    const second = await requestBatch(consumer, { idempotencyKey: key });
+
+    expect(notificationIdsOf(second)).toStrictEqual(notificationIdsOf(first));
+    expect(second.headers['idempotent-replayed']).toBe('true');
+    expect(await countNotifications(consumer)).toBe(partners.length);
+  });
+
+  it('creates each recipient once when the same batch arrives several times at once', async () => {
+    const consumer = await provisionConsumer();
+    const key = 'sale-ORD-4471-at-once';
+
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, async () => requestBatch(consumer, { idempotencyKey: key })),
+    );
+
+    // One sale, three partners: three notifications, however many times the
+    // gateway's retry fired. Every caller is told the truth -- accepted, or the
+    // identical batch it duplicates is still in flight.
+    expect(await countNotifications(consumer)).toBe(partners.length);
+    for (const response of responses) {
+      expect([202, 409]).toContain(response.statusCode);
+    }
+  });
+
+  it('refuses a batch that names someone twice, rather than messaging them twice', async () => {
+    const consumer = await provisionConsumer();
+
+    const response = await requestBatch(consumer, {
+      recipients: ['+5511999990001', '+5511999990002', '+5511999990001'],
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(await countNotifications(consumer)).toBe(0);
+  });
+
+  it('creates none of them when one recipient is invalid', async () => {
+    const consumer = await provisionConsumer();
+
+    const response = await requestBatch(consumer, {
+      recipients: ['+5511999990001', 'not-a-phone-number'],
+    });
+
+    // All or nothing: a partial batch would leave the caller unable to tell
+    // which partners were told and which were not.
+    expect(response.statusCode).toBe(400);
+    expect(await countNotifications(consumer)).toBe(0);
+  });
+
+  it('refuses more recipients than one batch may name', async () => {
+    const consumer = await provisionConsumer();
+
+    const response = await requestBatch(consumer, {
+      recipients: Array.from(
+        { length: 51 },
+        (unused, index) => `+55119999${String(index).padStart(5, '0')}`,
+      ),
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('refuses a key already used for a single notification', async () => {
+    const consumer = await provisionConsumer();
+    await requestNotification(consumer, { idempotencyKey: 'shared-between-endpoints' });
+
+    const response = await requestBatch(consumer, { idempotencyKey: 'shared-between-endpoints' });
+
+    expect(response.statusCode).toBe(422);
   });
 });
 
