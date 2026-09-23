@@ -8,6 +8,26 @@
 {
 	admin off
 	auto_https off
+
+	# The per-address limits meter whoever a request came from, so that has to
+	# be the visitor and never a proxy. Locally nothing stands in front of this
+	# server, nobody is trusted, and an X-Forwarded-For the client wrote is
+	# discarded. In production a proxy terminating TLS does stand in front, and
+	# TRUSTED_PROXY_RANGES names its addresses so the visitor survives the hop.
+	servers {
+		trusted_proxies static {$TRUSTED_PROXY_RANGES}
+		# Right to left, stopping at the first address that is not a trusted
+		# proxy: the left end of the chain is whatever the client chose to send.
+		trusted_proxies_strict
+	}
+}
+
+# The API trusts exactly one hop, the connection it can see, so it is handed
+# exactly one address: the visitor's, as resolved above.
+(api) {
+	reverse_proxy api:3000 {
+		header_up X-Forwarded-For {client_ip}
+	}
 }
 
 :8080 {
@@ -17,19 +37,19 @@
 	# too: the provider calls it from outside, and it must reach the API
 	# without the SPA fallback swallowing it into an index.html.
 	handle /v1/* {
-		reverse_proxy api:3000
+		import api
 	}
 	handle /dashboard/* {
-		reverse_proxy api:3000
+		import api
 	}
 	handle /webhooks/* {
-		reverse_proxy api:3000
+		import api
 	}
 	handle /health {
-		reverse_proxy api:3000
+		import api
 	}
 	handle /ready {
-		reverse_proxy api:3000
+		import api
 	}
 
 	handle {
