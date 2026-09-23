@@ -1,0 +1,177 @@
+name: whatsapp-notification-platform
+
+# The production stack, as tools/deploy/deploy.sh runs it on the server.
+#
+# How it differs from docker-compose.yml, each for a reason:
+#   - Images are pulled from the registry by tag and never built on the server.
+#     The tag is what a deploy changes, and the only thing a rollback changes.
+#   - Nothing publishes a port. Ports 80 and 443 belong to a shared proxy that
+#     terminates TLS and reaches the dashboard over the external `edge` network;
+#     the database and the provider are reachable from nothing but these services.
+#     Docker writes its own firewall rules, so a published port would be open to
+#     the internet whatever the host firewall says.
+#   - Every password and key is required. A default that is convenient locally is
+#     a published password here.
+#   - Only the real provider runs. The stub is for development and CI.
+
+# Docker keeps every line a container writes unless told otherwise, and a disk
+# that fills up takes the database down with it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_SYSTEM_USER:-platform_system}
+      POSTGRES_PASSWORD: ${DATABASE_SYSTEM_PASSWORD:?set DATABASE_SYSTEM_PASSWORD in .env}
+      POSTGRES_DB: ${DATABASE_NAME:-notifications}
+      APPLICATION_DATABASE_USER: ${DATABASE_APPLICATION_USER:-platform_application}
+      APPLICATION_DATABASE_PASSWORD: ${DATABASE_APPLICATION_PASSWORD:?set DATABASE_APPLICATION_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DATABASE_SYSTEM_USER:-platform_system} -d ${DATABASE_NAME:-notifications}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging: *logging
+
+  migrate:
+    # deploy.sh sets both. By hand: IMAGE_REPOSITORY lives in .env, and the tag
+    # that is running is the one in .deployed-tag.
+    image: ${IMAGE_REPOSITORY:?set IMAGE_REPOSITORY in .env}-migrate:${IMAGE_TAG:?export IMAGE_TAG, the tag in .deployed-tag}
+    command: ["node", "dist/cli/bootstrap.js"]
+    restart: "no"
+    environment:
+      DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD}@postgres:5432/${DATABASE_NAME:-notifications}
+      DATABASE_APPLICATION_URL: postgres://${DATABASE_APPLICATION_USER:-platform_application}:${DATABASE_APPLICATION_PASSWORD}@postgres:5432/${DATABASE_NAME:-notifications}
+      QUEUE_SCHEMA: ${QUEUE_SCHEMA:-pgboss}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+
+  api:
+    image: ${IMAGE_REPOSITORY}-api:${IMAGE_TAG}
+    command: ["node", "dist/main.js"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Set here rather than trusted to .env: production is what turns on the
+      # checks that refuse insecure cookies, shared database roles and
+      # placeholder secrets, and none of those should hinge on one line.
+      NODE_ENV: production
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 3000
+      DATABASE_APPLICATION_URL: postgres://${DATABASE_APPLICATION_USER:-platform_application}:${DATABASE_APPLICATION_PASSWORD}@postgres:5432/${DATABASE_NAME:-notifications}
+      DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD}@postgres:5432/${DATABASE_NAME:-notifications}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    logging: *logging
+
+  web:
+    image: ${IMAGE_REPOSITORY}-web:${IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      # Everything that reaches this container comes through the edge proxy on a
+      # private address, so trusting those is trusting that proxy, and the
+      # per-address limits see visitors rather than one proxy (docker/caddy/Caddyfile).
+      TRUSTED_PROXY_RANGES: private_ranges
+    networks:
+      default: {}
+      edge:
+        # The name the edge proxy's site file sends this project's traffic to.
+        aliases:
+          - whatsapp-notification-platform
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging: *logging
+
+  worker:
+    image: ${IMAGE_REPOSITORY}-worker:${IMAGE_TAG}
+    command: ["node", "dist/main.js"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_APPLICATION_URL: postgres://${DATABASE_APPLICATION_USER:-platform_application}:${DATABASE_APPLICATION_PASSWORD}@postgres:5432/${DATABASE_NAME:-notifications}
+      DATABASE_SYSTEM_URL: postgres://${DATABASE_SYSTEM_USER:-platform_system}:${DATABASE_SYSTEM_PASSWORD}@postgres:5432/${DATABASE_NAME:-notifications}
+    # Long enough for an in-flight WhatsApp send to finish, as in development.
+    stop_grace_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    logging: *logging
+
+  waha:
+    image: devlikeapro/waha:noweb-2026.8.2
+    restart: unless-stopped
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_API_KEY: ${WAHA_API_KEY:?set WAHA_API_KEY in .env}
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+    volumes:
+      - waha-sessions:/app/.sessions
+      - waha-media:/app/.media
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/ping').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    logging: *logging
+
+volumes:
+  postgres-data:
+  # The pairing. Losing these means finding the phone and scanning again.
+  waha-sessions:
+  waha-media:
+
+networks:
+  # Created by the proxy that owns ports 80 and 443 on this host; see
+  # "Deploying" in docs/runbook.md.
+  edge:
+    external: true
