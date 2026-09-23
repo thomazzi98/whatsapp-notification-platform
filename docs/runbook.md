@@ -189,6 +189,90 @@ starting together do not race.
 Migrations are forward-only. There is no `down` — a rollback that has never been
 executed is not a plan. Restore from a backup instead.
 
+## Deploying
+
+A push to `main` deploys it. The [Deploy workflow](../.github/workflows/deploy.yml)
+runs the checks a pull request gets, publishes the `migrate`, `api`, `worker` and
+`web` images to the GitHub Container Registry tagged with the commit's first twelve
+characters, copies [docker-compose.production.yml](../docker-compose.production.yml)
+and `tools/deploy/` to the server, and runs
+[deploy.sh](../tools/deploy/deploy.sh) there over SSH. The script pulls the tag,
+migrates, starts the stack, waits until every container is healthy, and asks for
+`/health` through the public address before it records the tag in `.deployed-tag`.
+
+Nothing on the server publishes a port. Ports 80 and 443 belong to a proxy the host
+already runs: a Caddy that imports `/etc/caddy/sites/*.caddy` and is attached to an
+external Docker network called `edge`. The dashboard container joins that network
+as `whatsapp-notification-platform`, and each deploy writes the site file for the
+hostname in `HTTP_PUBLIC_BASE_URL`, validates it, and reloads the proxy when it has
+changed. The dashboard's own Caddy trusts that proxy through `TRUSTED_PROXY_RANGES`,
+so the per-address limits meter visitors rather than one proxy address.
+
+### Preparing a server
+
+Once, as root, on a host with Docker and a `deploy` user in the `docker` group:
+
+```bash
+docker network create edge
+install -d -o deploy -g deploy /opt/whatsapp-notification-platform /opt/edge/sites
+```
+
+Then write `/opt/whatsapp-notification-platform/.env`, owned by `deploy` and
+readable by nobody else. It holds the variables in `.env.example`, generated on the
+server and never copied anywhere, with these differences:
+
+| Variable                                                    | Value                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `NODE_ENV`                                                  | `production`                                                                    |
+| `HTTP_PUBLIC_BASE_URL`                                      | `https://<hostname>`                                                            |
+| `SECURITY_COOKIE_SECURE`                                    | `true`                                                                          |
+| `DATABASE_SYSTEM_PASSWORD`, `DATABASE_APPLICATION_PASSWORD` | In place of the two connection strings, which the compose file builds from them |
+| `IMAGE_REPOSITORY`                                          | `ghcr.io/<owner>/whatsapp-notification-platform`                                |
+
+`openssl rand -base64 32` makes a key; `openssl rand -hex 32` makes a password that
+needs no escaping inside a URL.
+
+### What the repository needs
+
+A `production` environment that only `main` can deploy to, holding:
+
+| Secret                       | What it is                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| `DEPLOY_HOST`, `DEPLOY_USER` | Where to connect, and as whom                                                          |
+| `DEPLOY_SSH_KEY`             | A key used for nothing else; its public half is in the deploy user's `authorized_keys` |
+| `DEPLOY_KNOWN_HOSTS`         | The server's host key, so a different machine is refused instead of trusted            |
+| `PUBLIC_BASE_URL`            | Asked for `/health` from outside the server after each deploy                          |
+
+The registry needs nothing more. The run's own token pushes the images, and is
+handed to the server on standard input to pull them while the run lasts.
+
+### Operating it
+
+Compose needs to know which tag is running:
+
+```bash
+cd /opt/whatsapp-notification-platform
+export IMAGE_TAG="$(cat .deployed-tag)"
+docker compose -f docker-compose.production.yml ps
+```
+
+Close registration once the accounts that should exist do: set
+`SECURITY_REGISTRATION_ENABLED=false` in `.env`, then recreate the API with
+`docker compose -f docker-compose.production.yml up -d api`.
+
+### Rolling back
+
+Run the Deploy workflow by hand with an earlier tag. Nothing is built; the server
+switches images. On the server itself, after `docker login ghcr.io` if the images
+are private:
+
+```bash
+/opt/whatsapp-notification-platform/tools/deploy/deploy.sh <tag>
+```
+
+Migrations are forward-only, so rolling back across one runs the older code against
+the newer schema.
+
 ## Changing the WAHA engine
 
 Don't, unless you are prepared to re-scan. `WAHA_NAMESPACE` defaults to the engine

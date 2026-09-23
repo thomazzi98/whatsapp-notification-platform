@@ -1,9 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  # A push to main runs these checks as the first stage of the deploy workflow,
+  # so nothing ships without them and main is not checked twice.
+  workflow_call:
 
 # A second push to the same branch makes the first run's answer irrelevant, and
 # the free tier is a shared resource.

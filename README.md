@@ -73,7 +73,7 @@ paced, so the messages arrive in sequence rather than at once.
 | -------------------------------------- | ------------------------------------------------------------------- |
 | [Architecture](docs/architecture.md)   | What the parts are, how a notification travels, where the seams are |
 | [Decision records](docs/adr/README.md) | Eighteen decisions, each with its alternatives and its cost         |
-| [Runbook](docs/runbook.md)             | Operating it: connecting a number, diagnosing, backups, rotation    |
+| [Runbook](docs/runbook.md)             | Operating it: deploying, connecting a number, diagnosing, backups   |
 | [Security](docs/security.md)           | Threat model, controls, and what a review found and fixed           |
 | [Performance](docs/performance.md)     | Where the time goes, what the indexes are for, measured numbers     |
 | [Verification](docs/verification.md)   | Which claims are proven, which are modelled, and which are gaps     |
@@ -107,7 +107,7 @@ commit together.
 | ----------- | ------------------------------------------------------------------- |
 | `apps/`     | Deployable processes: the HTTP API, the queue worker, the dashboard |
 | `packages/` | Domain rules, contracts, adapters, and the composition root         |
-| `tools/`    | Development and test tooling, including a deterministic WAHA stub   |
+| `tools/`    | Development, test and deploy tooling, including a WAHA stub         |
 | `docs/`     | Architecture, decision records, and operational guides              |
 
 ## Requirements

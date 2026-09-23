@@ -1,0 +1,176 @@
+name: Deploy
+
+# Every push to main ships once it has passed exactly the checks a pull request
+# gets. Running this by hand with an existing tag is the rollback: nothing is
+# built, and the server switches to images the registry already holds.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing image tag to deploy instead of building this commit (a rollback)
+        required: false
+        type: string
+
+# One deploy at a time, and a newer one waits instead of cancelling the one in
+# progress: a deploy cut off halfway through a migration is the worst state the
+# server can be left in.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    if: inputs.tag == ''
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    name: Publish images
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Name the images
+        run: |
+          # Registry paths must be lowercase, and an owner's name need not be.
+          echo "IMAGE_REPOSITORY=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The build definitions CI and development use, so what ships is built
+      # the way the end-to-end suite's images were.
+      - name: Build and push
+        uses: docker/bake-action@v6
+        env:
+          # docker-compose.yml refuses to load without a provider key, and no
+          # image built here reads it.
+          WAHA_API_KEY: not-read-by-any-image
+        with:
+          # The checkout of this run's commit, which is what the tag names.
+          source: .
+          files: docker-compose.yml
+          targets: migrate,api,worker,web
+          push: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+            *.labels.org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            *.labels.org.opencontainers.image.revision=${{ github.sha }}
+            migrate.tags=${{ env.IMAGE_REPOSITORY }}-migrate:${{ env.IMAGE_TAG }}
+            api.tags=${{ env.IMAGE_REPOSITORY }}-api:${{ env.IMAGE_TAG }}
+            worker.tags=${{ env.IMAGE_REPOSITORY }}-worker:${{ env.IMAGE_TAG }}
+            web.tags=${{ env.IMAGE_REPOSITORY }}-web:${{ env.IMAGE_TAG }}
+
+  deploy:
+    name: Deploy
+    needs: images
+    # A rollback builds nothing, and a skipped dependency would skip this job too.
+    if: ${{ !cancelled() && (needs.images.result == 'success' || (needs.images.result == 'skipped' && inputs.tag != '')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      # Lets the run's own token pull what it just pushed, so the server holds
+      # no long-lived registry credential.
+      packages: read
+    env:
+      DEPLOY_DIRECTORY: /opt/whatsapp-notification-platform
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Decide what to deploy
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_SHA::12}}"
+          # It becomes part of a command line on the server, so it has to be a
+          # tag and nothing else.
+          if [[ ! "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::Not an image tag: $tag"
+            exit 1
+          fi
+          echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "IMAGE_REPOSITORY=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Prepare the connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          # Pinned rather than learned on first contact: a host key accepted
+          # blindly is exactly what an impostor would present.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<CONFIG
+          Host production
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+          CONFIG
+
+      # The compose file and the deploy script are how the server is operated,
+      # so they travel with the commit being deployed rather than living there.
+      - name: Copy the deploy files
+        run: |
+          # shellcheck disable=SC2029 # Expanded here on purpose.
+          tar -czf - docker-compose.production.yml tools/deploy docker/postgres/init |
+            ssh production "tar -xzf - -C '$DEPLOY_DIRECTORY'"
+
+      - name: Deploy
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The token travels on standard input, never on a command line that
+          # another user of the server could read. The rest is expanded here on
+          # purpose, and every value was checked above.
+          # shellcheck disable=SC2029
+          printf '%s' "$REGISTRY_TOKEN" |
+            ssh production "REGISTRY_USER='$GITHUB_ACTOR' IMAGE_REPOSITORY='$IMAGE_REPOSITORY' bash '$DEPLOY_DIRECTORY/tools/deploy/deploy.sh' '$IMAGE_TAG'"
+
+      # The server checked itself; this asks from outside it.
+      - name: Check it from the internet
+        env:
+          PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL }}
+        run: >
+          curl --fail --silent --show-error --output /dev/null
+          --retry 10 --retry-all-errors --retry-delay 5 --max-time 10
+          "$PUBLIC_BASE_URL/health"
+
+      - name: Summarise
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "### Deployed \`$IMAGE_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### Deploy of \`${IMAGE_TAG:-unknown}\` failed"
+            echo
+            echo "No volume was touched. To go back, run this workflow by hand with the"
+            echo "previous tag, or follow \"Deploying\" in docs/runbook.md."
+          } >> "$GITHUB_STEP_SUMMARY"
