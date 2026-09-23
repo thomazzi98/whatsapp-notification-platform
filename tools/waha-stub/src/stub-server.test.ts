@@ -1,3 +1,5 @@
+import { type AddressInfo, createServer } from 'node:net';
+
 import { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -39,6 +41,26 @@ async function call(options: {
     body: response.body.length > 0 ? response.json<Record<string, unknown>>() : {},
     headers: response.headers,
   };
+}
+
+/**
+ * A receiver that refuses at once. An unresolvable name waits on the resolver
+ * instead -- eleven seconds on one machine -- which timed this suite out there
+ * and nowhere else.
+ */
+async function unreachableReceiver(): Promise<string> {
+  const probe = createServer();
+  await new Promise<void>((resolve) => {
+    probe.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolve) => {
+    probe.close(() => {
+      resolve();
+    });
+  });
+
+  return `http://127.0.0.1:${String(port)}/webhooks`;
 }
 
 async function createWorkingSession(name = 'default'): Promise<void> {
@@ -210,7 +232,7 @@ describe('sending messages', () => {
         name: 'default',
         start: true,
         config: {
-          webhooks: [{ url: 'http://receiver.invalid/webhooks', events: ['message.ack'] }],
+          webhooks: [{ url: await unreachableReceiver(), events: ['message.ack'] }],
         },
       },
     });

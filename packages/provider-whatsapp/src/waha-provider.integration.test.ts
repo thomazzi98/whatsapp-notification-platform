@@ -11,6 +11,13 @@ const apiKey = 'integration-stub-key';
 let stub: FastifyInstance;
 let provider: WahaProvider;
 let baseUrl: string;
+/**
+ * Where the stub sends callbacks nobody is listening for. A closed loopback
+ * port refuses in milliseconds; an unresolvable name such as receiver.invalid
+ * waits on the resolver, which took eleven seconds on one machine and turned
+ * every session test into a timeout there while passing everywhere else.
+ */
+let unreachableReceiver: string;
 
 beforeAll(async () => {
   stub = createStubServer({ apiKey });
@@ -19,6 +26,7 @@ beforeAll(async () => {
   const address = stub.server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${String(address.port)}`;
   provider = new WahaProvider({ baseUrl, apiKey, requestTimeoutMilliseconds: 2000 });
+  unreachableReceiver = `${await findClosedPortUrl()}/webhooks`;
 });
 
 afterAll(async () => {
@@ -48,7 +56,7 @@ async function forceFailureMode(mode: string): Promise<void> {
 async function createConnectedSession(sessionName = 'default'): Promise<void> {
   await provider.createSession({
     sessionName,
-    webhookUrl: 'http://receiver.invalid/webhooks',
+    webhookUrl: unreachableReceiver,
     webhookSigningKey: 'a-signing-key',
     start: true,
   });
@@ -59,7 +67,7 @@ describe('session lifecycle', () => {
   it('creates a session that is waiting for a code', async () => {
     const result = await provider.createSession({
       sessionName: 'default',
-      webhookUrl: 'http://receiver.invalid/webhooks',
+      webhookUrl: unreachableReceiver,
       webhookSigningKey: 'a-signing-key',
       start: true,
     });
@@ -123,7 +131,7 @@ describe('session lifecycle', () => {
     // than crash.
     const result = await provider.createSession({
       sessionName: 'default',
-      webhookUrl: 'http://receiver.invalid/webhooks',
+      webhookUrl: unreachableReceiver,
       webhookSigningKey: 'key',
       start: false,
     });
@@ -136,7 +144,7 @@ describe('qr codes', () => {
   it('fetches a base64 image', async () => {
     await provider.createSession({
       sessionName: 'default',
-      webhookUrl: 'http://receiver.invalid/webhooks',
+      webhookUrl: unreachableReceiver,
       webhookSigningKey: 'key',
       start: true,
     });
@@ -279,7 +287,7 @@ describe('sending', () => {
   it('fails when the session is not connected', async () => {
     await provider.createSession({
       sessionName: 'default',
-      webhookUrl: 'http://receiver.invalid/webhooks',
+      webhookUrl: unreachableReceiver,
       webhookSigningKey: 'key',
       start: true,
     });
