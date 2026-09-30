@@ -23,14 +23,26 @@ allowBuilds:
 # Forced across the whole tree, transitive dependencies included.
 overrides:
   # GHSA-w2qp-rph6-63g4, GHSA-3m5p-2c4r-xxw2 and one further advisory, all fixed
-  # in 5.12.1. @nestjs/platform-fastify@11.2.3 depends on 5.11.3 exactly and has
-  # no newer release, so the override is the only way to be on a patched Fastify
-  # while still loading a single copy of it.
+  # in 5.12.1. @nestjs/platform-fastify, even at 11.2.4, depends on 5.11.3
+  # exactly, so the override is the only way to be on a patched Fastify while
+  # still loading a single copy of it.
   fastify: 5.12.3
   # GHSA-67mh-4wv8-2f99. Reached only through drizzle-kit's legacy
   # "@esbuild-kit" loader, which is a development dependency, but an advisory
   # that is merely unreachable today is one nobody re-reads tomorrow.
   esbuild: ^0.25.12
+  # GHSA-hrr3-gc8f-f4qj and GHSA-jvvf-x445-j334: host case normalisation and
+  # mailto header injection in the URI parser behind Fastify's schema compiler,
+  # which is used on two major lines at once.
+  "fast-uri@>=3.0.0 <3.1.8": ^3.1.8
+  "fast-uri@>=4.0.0 <4.1.5": ^4.1.5
+  # GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p and GHSA-q2hr-2g5m-vwhr (brace
+  # expansion denial of service), GHSA-m9gg-hp2v-232j and GHSA-f596-whhp-79r4
+  # (gRPC certificate and error handling). Both arrive only through
+  # testcontainers, which the test harness loads and production never does,
+  # but the audit cannot tell those apart and neither can a later reader.
+  "brace-expansion@>=2.0.0 <2.1.7": ^2.1.7
+  "@grpc/grpc-js@>=1.14.0 <1.14.5": ^1.14.5
 
 # Versions are declared once here and referenced as "catalog:" by every
 # workspace package, so a shared dependency cannot drift between packages.
@@ -52,10 +64,12 @@ catalog:
   "@testcontainers/postgresql": 12.1.0
 
   # HTTP stack. The Nest packages move together and must stay on one line.
-  "@nestjs/common": 11.2.3
-  "@nestjs/core": 11.2.3
-  "@nestjs/platform-fastify": 11.2.3
-  "@nestjs/testing": 11.2.3
+  # 11.2.4 fixes GHSA-9c5c-9qcx-q35q, a path-scoped middleware bypass through
+  # absolute-form request targets in the Fastify adapter.
+  "@nestjs/common": 11.2.4
+  "@nestjs/core": 11.2.4
+  "@nestjs/platform-fastify": 11.2.4
+  "@nestjs/testing": 11.2.4
   # One Fastify in the process, and it must be a patched one. The Nest adapter
   # pins 5.11.3 exactly, which carries three advisories, so the override above
   # lifts the whole tree to the patched release rather than leaving two copies.
