@@ -1,7 +1,12 @@
 import { type ReactNode, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
-import { type NotificationFilters, useNotifications } from '../api/queries';
+import {
+  type NotificationFilters,
+  useCancelWaitingNotifications,
+  useNotifications,
+} from '../api/queries';
+import { CancelWaitingNotifications } from '../components/cancel-waiting';
 import { notificationStatusOrder, NotificationStatusBadge } from '../components/status';
 import {
   Alert,
@@ -22,6 +27,13 @@ export function NotificationsPage(): ReactNode {
   // each page started rather than computing an offset.
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const notifications = useNotifications(applicationId, filters);
+  const cancelWaiting = useCancelWaitingNotifications(applicationId);
+  // Offered when something waiting is on screen, which is how a pile-up behind
+  // a dropped connection shows itself: a page of notifications going nowhere.
+  const isAnythingWaiting =
+    notifications.data?.data.some(
+      (notification) => notification.status === 'QUEUED' || notification.status === 'RETRYING',
+    ) ?? false;
 
   const applyFilter = (change: Partial<NotificationFilters>): void => {
     // Changing a filter starts a new result set, so the old cursor is
@@ -72,6 +84,14 @@ export function NotificationsPage(): ReactNode {
           </Field>
         </div>
       </Panel>
+
+      {(isAnythingWaiting || cancelWaiting.isSuccess) && (
+        <CancelWaitingNotifications
+          description="Cancel every notification of this application that has not been sent yet. What is being handed to WhatsApp at this moment, and anything scheduled for later, is left alone."
+          cancellation={cancelWaiting}
+          scope={{}}
+        />
+      )}
 
       <Panel title="Notifications">
         {notifications.isPending && <Loading label="Loading notifications…" />}

@@ -171,6 +171,31 @@ async function createConnection(): Promise<Connection> {
   return { tenant, sessionId, providerSessionName: `wnp-${sessionId}` };
 }
 
+async function addConnection(tenant: Tenant, displayName: string): Promise<string> {
+  const created = await dashboardRequest(
+    'POST',
+    `/dashboard/applications/${tenant.applicationId}/whatsapp-sessions`,
+    { body: { displayName }, tenant },
+  );
+
+  return created.body.id as string;
+}
+
+function connectionPath(connection: Connection, action = ''): string {
+  return `/dashboard/applications/${connection.tenant.applicationId}/whatsapp-sessions/${connection.sessionId}${action}`;
+}
+
+async function forgetEverythingAtTheProvider(): Promise<void> {
+  // A wiped volume, a session deleted at the provider behind the platform's back.
+  await fetch(`${stubBaseUrl}/__stub/reset`, { method: 'POST' });
+}
+
+async function readStatus(notificationId: string): Promise<string | undefined> {
+  const notification = await database.readNotification(notificationId);
+
+  return notification?.status;
+}
+
 async function readStubSigningKey(providerSessionName: string): Promise<string> {
   const response = await fetch(`${stubBaseUrl}/__stub/state`);
   const state = (await response.json()) as {
@@ -322,6 +347,76 @@ describe('connecting WhatsApp', () => {
 
     expect(read.body.status).toBe('STOPPED');
     expect(read.body.lastError).toContain('no longer has this connection');
+  });
+
+  it('refuses to delete a connection with notification history, and leaves the provider alone', async () => {
+    const connection = await createConnection();
+    await database.insertNotification({
+      applicationId: connection.tenant.applicationId,
+      whatsAppSessionId: connection.sessionId,
+      status: 'FAILED',
+    });
+
+    const removed = await dashboardRequest('DELETE', connectionPath(connection), {
+      tenant: connection.tenant,
+    });
+
+    // Refused before the provider was asked. Asking first, as it once did,
+    // deleted the session there and then failed here, leaving a connection the
+    // dashboard still listed and the provider no longer had.
+    expect(removed.statusCode).toBe(409);
+    expect(removed.body.detail).toContain('Unpair it instead');
+    const stubState = await fetch(`${stubBaseUrl}/__stub/state`);
+    const state = (await stubState.json()) as { sessions: { name: string }[] };
+    expect(state.sessions.map((session) => session.name)).toContain(connection.providerSessionName);
+  });
+
+  it('unpairs a connection the provider has already forgotten', async () => {
+    const connection = await createConnection();
+    await forgetEverythingAtTheProvider();
+
+    const loggedOut = await dashboardRequest('POST', connectionPath(connection, '/logout'), {
+      tenant: connection.tenant,
+    });
+
+    // There is nothing left to unpair, which is an answer rather than an error
+    // the person could do anything about.
+    expect(loggedOut.statusCode).toBe(200);
+    expect(loggedOut.body.status).toBe('STOPPED');
+  });
+
+  it('pairs a forgotten connection again, under the same name and signing key', async () => {
+    const connection = await createConnection();
+    const signingKey = await readStubSigningKey(connection.providerSessionName);
+    await forgetEverythingAtTheProvider();
+
+    const started = await dashboardRequest('POST', connectionPath(connection, '/start'), {
+      tenant: connection.tenant,
+    });
+
+    // Without this a connection the provider lost was dead for good, and one
+    // with a history cannot be deleted and replaced either.
+    expect(started.statusCode).toBe(200);
+    expect(started.body.status).toBe('SCAN_QR_CODE');
+    expect(await readStubSigningKey(connection.providerSessionName)).toBe(signingKey);
+  });
+
+  it('queues a notification against the connection being paired, not an older one that stopped', async () => {
+    const connection = await createConnection();
+    await forgetEverythingAtTheProvider();
+    await dashboardRequest('GET', connectionPath(connection), { tenant: connection.tenant });
+    const replacement = await addConnection(connection.tenant, 'Replacement line');
+
+    const created = await dashboardRequest(
+      'POST',
+      `/dashboard/applications/${connection.tenant.applicationId}/notifications`,
+      { body: { recipient: '+5511999990000', body: 'Order shipped' }, tenant: connection.tenant },
+    );
+
+    // Bound to the stopped one, it would wait on a connection nobody was going
+    // to bring back, while the one being paired sent nothing.
+    expect(created.statusCode).toBe(202);
+    expect(created.body.whatsAppSessionId).toBe(replacement);
   });
 
   it("refuses to read another tenant's connection", async () => {
@@ -503,5 +598,89 @@ describe('receiving a provider callback', () => {
     });
 
     expect(status).toBe(400);
+  });
+});
+
+async function queue(connection: Connection, status: string, sessionId?: string): Promise<string> {
+  return database.insertNotification({
+    applicationId: connection.tenant.applicationId,
+    whatsAppSessionId: sessionId ?? connection.sessionId,
+    status,
+    ...(status === 'SCHEDULED' && { scheduledAt: new Date(Date.now() + 3_600_000) }),
+    ...(status === 'RETRYING' && { nextAttemptAt: new Date(Date.now() + 300_000) }),
+    ...(status === 'SENT' && { providerMessageId: 'provider-message-1', sentAt: new Date() }),
+  });
+}
+
+async function cancelWaiting(
+  connection: Connection,
+  body: Record<string, unknown>,
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  return dashboardRequest(
+    'POST',
+    `/dashboard/applications/${connection.tenant.applicationId}/notifications/cancel-waiting`,
+    { body, tenant: connection.tenant },
+  );
+}
+
+describe('cancelling what is waiting to be sent', () => {
+  it('cancels everything queued or retrying, and nothing else', async () => {
+    const connection = await createConnection();
+    const waiting = [
+      await queue(connection, 'QUEUED'),
+      await queue(connection, 'RETRYING'),
+      await queue(connection, 'RETRYING'),
+    ];
+    const untouched = {
+      PROCESSING: await queue(connection, 'PROCESSING'),
+      SCHEDULED: await queue(connection, 'SCHEDULED'),
+      SENT: await queue(connection, 'SENT'),
+      FAILED: await queue(connection, 'FAILED'),
+    };
+
+    const cancelled = await cancelWaiting(connection, {});
+
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.body.cancelledCount).toBe(3);
+    for (const notificationId of waiting) {
+      expect(await readStatus(notificationId)).toBe('CANCELLED');
+      // Each one says so on its own timeline, as a single cancellation would.
+      expect(await database.listEventTypes(notificationId)).toStrictEqual([
+        'notification.cancelled',
+      ]);
+    }
+    // Being handed to WhatsApp, scheduled for later, or already finished.
+    for (const [status, notificationId] of Object.entries(untouched)) {
+      expect(await readStatus(notificationId)).toBe(status);
+    }
+  });
+
+  it('cancels only what is queued against the connection it names', async () => {
+    const connection = await createConnection();
+    const other = await addConnection(connection.tenant, 'Second line');
+    const onThisOne = await queue(connection, 'RETRYING');
+    const onTheOther = await queue(connection, 'RETRYING', other);
+
+    const cancelled = await cancelWaiting(connection, { whatsAppSessionId: connection.sessionId });
+
+    expect(cancelled.body.cancelledCount).toBe(1);
+    expect(await readStatus(onThisOne)).toBe('CANCELLED');
+    expect(await readStatus(onTheOther)).toBe('RETRYING');
+  });
+
+  it("never reaches another tenant's notifications", async () => {
+    const connection = await createConnection();
+    const stranger = await createConnection();
+    const theirs = await queue(stranger, 'QUEUED');
+
+    const byApplication = await cancelWaiting(connection, {});
+    const byConnection = await cancelWaiting(connection, {
+      whatsAppSessionId: stranger.sessionId,
+    });
+
+    expect(byApplication.body.cancelledCount).toBe(0);
+    // 404, like any other identifier from somewhere else.
+    expect(byConnection.statusCode).toBe(404);
+    expect(await readStatus(theirs)).toBe('QUEUED');
   });
 });

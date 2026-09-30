@@ -21,6 +21,7 @@ export const domainErrorCodes = [
   'no_whatsapp_session',
   'whatsapp_session_not_found',
   'whatsapp_session_not_scannable',
+  'whatsapp_session_in_use',
   'whatsapp_provider_unavailable',
   'notification_not_found',
   'notification_not_cancellable',

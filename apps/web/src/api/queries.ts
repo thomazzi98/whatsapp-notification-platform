@@ -11,6 +11,8 @@ import {
   type NotificationResponse,
   type QrCodeResponse,
   type RegisterRequest,
+  type WaitingNotificationCancellationRequest,
+  type WaitingNotificationCancellationResponse,
   type WhatsAppSessionResponse,
 } from '@platform/contracts';
 import { type NotificationStatus } from '@platform/domain';
@@ -421,6 +423,31 @@ export function useSendNotification(
         method: 'POST',
         body,
       }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notifications(applicationId) });
+    },
+  });
+}
+
+/**
+ * Cancels everything still waiting to be sent: for the application, or only
+ * what is queued against one connection.
+ */
+export function useCancelWaitingNotifications(
+  applicationId: string,
+): UseMutationResult<
+  WaitingNotificationCancellationResponse,
+  Error,
+  WaitingNotificationCancellationRequest
+> {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (scope: WaitingNotificationCancellationRequest) =>
+      request<WaitingNotificationCancellationResponse>(
+        `${applicationPath(applicationId)}/notifications/cancel-waiting`,
+        { method: 'POST', body: scope },
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.notifications(applicationId) });
     },

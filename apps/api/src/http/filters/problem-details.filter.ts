@@ -52,6 +52,9 @@ const statusByDomainErrorCode: Record<DomainErrorCode, { status: number; title: 
   // The connection is in a state where this action cannot succeed, which is a
   // conflict with its current state rather than a bad request.
   whatsapp_session_not_scannable: { status: 409, title: 'Conflict' },
+  // Refused before the provider is touched: the connection is still what its
+  // notifications' history points at.
+  whatsapp_session_in_use: { status: 409, title: 'Conflict' },
   // 502, not 500: the platform is working and something it depends on is not,
   // and the difference decides whether an operator looks at this service or at
   // WhatsApp.

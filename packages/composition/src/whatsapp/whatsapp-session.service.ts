@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { type ApplicationConfiguration } from '@platform/configuration';
 import {
   type DatabaseConnection,
+  NotificationRepository,
   type WhatsAppSessionRecord,
   WhatsAppSessionRepository,
 } from '@platform/database';
@@ -16,12 +17,18 @@ import {
   WHATSAPP_PROVIDER_PORT,
   type WhatsAppProviderPort,
 } from '@platform/domain';
-import { encryptSecret } from '@platform/security';
+import { decryptSecret, encryptSecret } from '@platform/security';
 import { Inject, Injectable } from '@nestjs/common';
 
 import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION } from '../tokens';
 
 const SIGNING_KEY_BYTES = 32;
+
+/** What WAHA answers for a session it does not have. */
+const PROVIDER_NOT_FOUND = 404;
+
+const FORGOTTEN_BY_PROVIDER =
+  'The WhatsApp provider no longer has this connection. Start it to pair it again.';
 
 export interface CreateWhatsAppSessionInput {
   readonly applicationId: string;
@@ -31,6 +38,7 @@ export interface CreateWhatsAppSessionInput {
 @Injectable()
 export class WhatsAppSessionService {
   private readonly sessions: WhatsAppSessionRepository;
+  private readonly notifications: NotificationRepository;
   private readonly provider: WhatsAppProviderPort;
   private readonly clock: ClockPort;
   private readonly identifiers: IdentifierGeneratorPort;
@@ -44,6 +52,7 @@ export class WhatsAppSessionService {
     @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
   ) {
     this.sessions = new WhatsAppSessionRepository(connection.database);
+    this.notifications = new NotificationRepository(connection.database);
     this.provider = provider;
     this.clock = clock;
     this.identifiers = identifiers;
@@ -95,6 +104,35 @@ export class WhatsAppSessionService {
     });
 
     return this.getOrFail(applicationId, sessionId);
+  }
+
+  private async recreateAtProvider(record: WhatsAppSessionRecord): Promise<WhatsAppSessionRecord> {
+    const created = await this.provider.createSession({
+      sessionName: record.providerSessionName,
+      webhookUrl: this.toWebhookUrl(record.id),
+      webhookSigningKey: decryptSecret(
+        record.webhookSigningKeyCiphertext,
+        this.configuration.security.encryptionKey,
+      ),
+      start: true,
+    });
+
+    if (created.outcome === 'failed') {
+      throw new DomainError(
+        'whatsapp_provider_unavailable',
+        `The WhatsApp provider could not recreate the connection: ${created.failure.message}`,
+      );
+    }
+
+    await this.sessions.recordStatus(record.id, {
+      status: created.value.status,
+      phoneNumber: created.value.phoneNumber,
+      pushName: created.value.pushName,
+      lastError: null,
+      now: this.clock.now(),
+    });
+
+    return this.getOrFail(record.applicationId, record.id);
   }
 
   /**
@@ -176,7 +214,7 @@ export class WhatsAppSessionService {
           status: 'STOPPED',
           phoneNumber: record.phoneNumber,
           pushName: record.pushName,
-          lastError: 'The WhatsApp provider no longer has this connection. Connect it again.',
+          lastError: FORGOTTEN_BY_PROVIDER,
           now: this.clock.now(),
         });
       }
@@ -223,10 +261,23 @@ export class WhatsAppSessionService {
     return code.value;
   }
 
+  /**
+   * Starts the connection, recreating it at the provider first if the provider
+   * has forgotten it.
+   *
+   * The provider can lose a session the platform still has: it was deleted
+   * there, or its state was wiped. Recreating it under the same name and with
+   * the same signing key is what lets that connection be paired again. Without
+   * it the connection was dead for good, and one that notifications were ever
+   * sent through cannot be deleted and replaced either.
+   */
   public async start(applicationId: string, sessionId: string): Promise<WhatsAppSessionRecord> {
     const record = await this.getOrFail(applicationId, sessionId);
     const started = await this.provider.startSession(record.providerSessionName);
 
+    if (started.outcome === 'failed' && started.failure.providerStatusCode === PROVIDER_NOT_FOUND) {
+      return this.recreateAtProvider(record);
+    }
     if (started.outcome === 'failed') {
       throw new DomainError(
         'whatsapp_provider_unavailable',
@@ -256,10 +307,28 @@ export class WhatsAppSessionService {
     return this.recordAndReturn(applicationId, sessionId, stopped.value.status);
   }
 
+  /**
+   * Unpairs the connection. A provider that no longer has the session has
+   * nothing left to unpair, so that is recorded rather than reported as a
+   * failure the person can do nothing about.
+   */
   public async logout(applicationId: string, sessionId: string): Promise<WhatsAppSessionRecord> {
     const record = await this.getOrFail(applicationId, sessionId);
     const loggedOut = await this.provider.logoutSession(record.providerSessionName);
 
+    if (
+      loggedOut.outcome === 'failed' &&
+      loggedOut.failure.providerStatusCode === PROVIDER_NOT_FOUND
+    ) {
+      await this.sessions.recordStatus(sessionId, {
+        status: 'STOPPED',
+        phoneNumber: record.phoneNumber,
+        pushName: record.pushName,
+        lastError: FORGOTTEN_BY_PROVIDER,
+        now: this.clock.now(),
+      });
+      return this.getOrFail(applicationId, sessionId);
+    }
     if (loggedOut.outcome === 'failed') {
       throw new DomainError(
         'whatsapp_provider_unavailable',
@@ -270,17 +339,31 @@ export class WhatsAppSessionService {
   }
 
   /**
-   * Deletes the connection at the provider first.
+   * Deletes the connection, at the provider first.
    *
    * The other order would leave a paired WhatsApp account running against a
    * session the platform no longer knows about, still receiving messages nobody
    * reads.
+   *
+   * A connection any notification was queued against cannot be deleted: it is
+   * part of that notification's history. That is decided before the provider
+   * is touched. Deciding it after, as the database once did, deleted the
+   * session at the provider, refused the rest, and left a connection the
+   * platform still listed and the provider no longer had.
    */
   public async delete(applicationId: string, sessionId: string): Promise<void> {
     const record = await this.getOrFail(applicationId, sessionId);
+
+    if (await this.notifications.existsForSession(applicationId, sessionId)) {
+      throw new DomainError(
+        'whatsapp_session_in_use',
+        'Notifications were queued against this connection, and their history keeps it. Unpair it instead, and cancel whatever is still waiting if it should not be sent.',
+      );
+    }
+
     const deleted = await this.provider.deleteSession(record.providerSessionName);
 
-    if (deleted.outcome === 'failed') {
+    if (deleted.outcome === 'failed' && deleted.failure.providerStatusCode !== PROVIDER_NOT_FOUND) {
       throw new DomainError(
         'whatsapp_provider_unavailable',
         `The WhatsApp provider could not delete the connection: ${deleted.failure.message}`,

@@ -91,7 +91,11 @@ Check in this order, because each answer changes the next step.
 
 1. **Is the session `WORKING`?** Connections page, or
    `SELECT status FROM whatsapp_sessions;`. A session in `SCAN_QR_CODE` needs a
-   human, and notifications for it are deferred rather than failed.
+   human. Notifications for a connection that cannot send wait for it, costing no
+   attempt, for `DELIVERY_MAXIMUM_CONNECTION_WAIT_MINUTES` (an hour by default);
+   after that they fail as `connection_unavailable` rather than go out late. To
+   stop them sooner, **Cancel everything waiting** on the notifications page or on
+   the connection's page.
 2. **Is the worker running?** `docker compose ps worker`. It has no HTTP port, so
    its health is its logs.
 3. **Are jobs being claimed?** `SELECT name, state, count(*) FROM pgboss.job
@@ -140,6 +144,30 @@ so a client can pace itself rather than discover the limit by hitting it.
 If the limiter cannot reach the database it fails open and logs
 `ratelimit.degraded` at warning level. Traffic is served unmetered until the
 database returns.
+
+### WhatsApp restricted the number
+
+The connection drops straight after a send, and the provider's log says
+`reachout timelock restriction set` followed by `Stream Errored (conflict)`.
+WhatsApp has limited the number's ability to message people, which is what it
+does to accounts that send automated messages to people who never saved the
+number or replied to it. The platform cannot lift it, and reconnecting over and
+over does not help: the restriction is on the account, so the first message after
+each reconnection sets it again.
+
+1. Cancel what is waiting, so nothing is sent the moment the number returns.
+2. Leave the number alone until the restriction lifts, which takes hours to days.
+3. Have the recipients save the number and send it a message: a conversation
+   they started is not a cold reach-out.
+4. Send less, and only what the recipients expect to receive. Pacing spaces
+   messages out; it does not make unwanted ones acceptable.
+
+### A connection cannot be deleted
+
+A connection that any notification was queued against is part of that
+notification's history, so it cannot be deleted; the dashboard refuses before the
+provider is touched. **Unpair** it instead. If the provider has lost it, **Start**
+creates it there again under the same name, ready to be paired by a new scan.
 
 ### A worker died mid-dispatch
 

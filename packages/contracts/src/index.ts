@@ -31,6 +31,9 @@ export {
   notificationListResponseSchema,
   type NotificationResponse,
   notificationResponseSchema,
+  type WaitingNotificationCancellationRequest,
+  waitingNotificationCancellationRequestSchema,
+  type WaitingNotificationCancellationResponse,
 } from './notifications';
 export {
   type AuthenticatedUser,

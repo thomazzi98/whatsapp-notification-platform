@@ -1,7 +1,13 @@
 import { type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 
-import { useConnection, useConnectionAction, useDeleteConnection } from '../api/queries';
+import {
+  useCancelWaitingNotifications,
+  useConnection,
+  useConnectionAction,
+  useDeleteConnection,
+} from '../api/queries';
+import { CancelWaitingNotifications } from '../components/cancel-waiting';
 import { ConnectionActions, QrPanel } from '../components/qr-panel';
 import { ConnectionStatusBadge, describeConnectionStatus } from '../components/status';
 import { Alert, Button, Loading, Panel, Timestamp } from '../components/ui';
@@ -12,6 +18,7 @@ export function ConnectionPage(): ReactNode {
   const connection = useConnection(applicationId, connectionId);
   const act = useConnectionAction(applicationId, connectionId);
   const remove = useDeleteConnection(applicationId);
+  const cancelWaiting = useCancelWaitingNotifications(applicationId);
 
   if (connection.isPending) {
     return <Loading label="Loading connection…" />;
@@ -40,6 +47,14 @@ export function ConnectionPage(): ReactNode {
 
       {record.lastError !== null && (
         <Alert title="The provider reported a problem">{record.lastError}</Alert>
+      )}
+
+      {record.status !== 'WORKING' && (
+        <CancelWaitingNotifications
+          description="While this connection cannot send, notifications queued against it wait for it, for a limited time, and then fail rather than go out late. Cancel them now if they should not be sent at all."
+          cancellation={cancelWaiting}
+          scope={{ whatsAppSessionId: record.id }}
+        />
       )}
 
       <Panel title="Details">
@@ -106,8 +121,9 @@ export function ConnectionPage(): ReactNode {
               Delete this connection
             </Button>
             <p className="mt-2 text-xs text-ink-subtle">
-              Removes it from the provider and from this application. Notifications already queued
-              against it cannot be sent afterwards.
+              Removes it from the provider and from this application. Only a connection no
+              notification was ever queued against can be deleted; one with a history can be
+              unpaired instead.
             </p>
             {remove.isError && (
               <div className="mt-2">

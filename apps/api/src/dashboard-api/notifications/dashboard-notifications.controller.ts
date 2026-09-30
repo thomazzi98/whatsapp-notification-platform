@@ -12,6 +12,9 @@ import {
   type NotificationEventResponse,
   notificationListQuerySchema,
   type NotificationResponse,
+  type WaitingNotificationCancellationRequest,
+  waitingNotificationCancellationRequestSchema,
+  type WaitingNotificationCancellationResponse,
 } from '@platform/contracts';
 import { type NotificationStatus } from '@platform/domain';
 import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
@@ -113,6 +116,23 @@ export class DashboardNotificationsController {
     });
 
     return toNotificationResponse(result.notification);
+  }
+
+  /** Cancels every notification still waiting to be sent, for the application or one connection. */
+  @Post('cancel-waiting')
+  @HttpCode(200)
+  public async cancelWaiting(
+    @CurrentUser() principal: AuthenticatedPrincipal,
+    @Param('applicationId', new UuidParameterPipe('applicationId')) applicationId: string,
+    @Body(new ZodValidationPipe(waitingNotificationCancellationRequestSchema))
+    body: WaitingNotificationCancellationRequest,
+  ): Promise<WaitingNotificationCancellationResponse> {
+    await this.authorize(principal, applicationId);
+    const cancelledCount = await this.notifications.cancelWaiting(applicationId, {
+      ...(body.whatsAppSessionId !== undefined && { whatsAppSessionId: body.whatsAppSessionId }),
+    });
+
+    return { cancelledCount };
   }
 
   @Get(':notificationId')

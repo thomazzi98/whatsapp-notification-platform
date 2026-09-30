@@ -117,3 +117,20 @@ export const notificationListResponseSchema = z.object({
 export const notificationBatchResponseSchema = z.object({
   data: z.array(notificationResponseSchema),
 });
+
+/**
+ * Cancels everything still waiting to be sent: for the whole application, or
+ * only what is queued against one connection. Dashboard only; a caller holding
+ * an API key cancels the notifications it created, one by one.
+ */
+export const waitingNotificationCancellationRequestSchema = z.object({
+  whatsAppSessionId: z.uuid().optional(),
+});
+
+export type WaitingNotificationCancellationRequest = z.infer<
+  typeof waitingNotificationCancellationRequestSchema
+>;
+
+export interface WaitingNotificationCancellationResponse {
+  readonly cancelledCount: number;
+}

@@ -34,20 +34,21 @@ model of the provider, not the provider.
 
 ### Failure and recovery
 
-| Claim                                                           | Status                      | Where                                                                             |
-| --------------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
-| A transient provider failure is retried on the backoff curve    | Verified locally            | `notification-dispatch.integration.test.ts`                                       |
-| A permanent provider rejection is not retried                   | Verified locally            | Same file, and `packages/provider-whatsapp/src/waha-provider.integration.test.ts` |
-| A provider `Retry-After` raises the floor of the next attempt   | Verified locally            | The stub sends the header; the assertion is bounded on both sides                 |
-| The attempt budget is enforced and terminates                   | Verified locally            | `notification-dispatch.integration.test.ts`                                       |
-| An abandoned claim is reaped and the notification requeued      | Verified locally            | Same file                                                                         |
-| A dispatch schedules its own retry and its own paced send       | Verified locally            | `transactional-enqueue.integration.test.ts`; both fail under the old policy       |
-| A connection that cannot send makes notifications wait, bounded | Verified locally            | `notification-dispatch.integration.test.ts`: one timeline entry, then a failure   |
-| A dead-lettered notification is reported at error level         | Verified locally            | `apps/worker/src/jobs/job-runner.service.test.ts`                                 |
-| The worker drains in-flight work on SIGTERM, and is bounded     | Verified locally            | `apps/worker/src/graceful-shutdown.integration.test.ts`                           |
-| Postgres going away is survived and reported                    | Verified locally            | Readiness probes; also exercised by hand by stopping the container                |
-| WAHA going away does not take the API down                      | Verified locally            | `/ready` reports the provider as informational only                               |
-| Behaviour under a real WAHA outage, or a WhatsApp ban           | **Not externally verified** | Neither has been provoked against the real provider                               |
+| Claim                                                           | Status                      | Where                                                                                           |
+| --------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------- |
+| A transient provider failure is retried on the backoff curve    | Verified locally            | `notification-dispatch.integration.test.ts`                                                     |
+| A permanent provider rejection is not retried                   | Verified locally            | Same file, and `packages/provider-whatsapp/src/waha-provider.integration.test.ts`               |
+| A provider `Retry-After` raises the floor of the next attempt   | Verified locally            | The stub sends the header; the assertion is bounded on both sides                               |
+| The attempt budget is enforced and terminates                   | Verified locally            | `notification-dispatch.integration.test.ts`                                                     |
+| An abandoned claim is reaped and the notification requeued      | Verified locally            | Same file                                                                                       |
+| A dispatch schedules its own retry and its own paced send       | Verified locally            | `transactional-enqueue.integration.test.ts`; both fail under the old policy                     |
+| A connection that cannot send makes notifications wait, bounded | Verified locally            | `notification-dispatch.integration.test.ts`: one timeline entry, then a failure                 |
+| Everything waiting can be cancelled at once                     | Verified locally            | `apps/api/src/public-api/webhooks.integration.test.ts`                                          |
+| A dead-lettered notification is reported at error level         | Verified locally            | `apps/worker/src/jobs/job-runner.service.test.ts`                                               |
+| The worker drains in-flight work on SIGTERM, and is bounded     | Verified locally            | `apps/worker/src/graceful-shutdown.integration.test.ts`                                         |
+| Postgres going away is survived and reported                    | Verified locally            | Readiness probes; also exercised by hand by stopping the container                              |
+| WAHA going away does not take the API down                      | Verified locally            | `/ready` reports the provider as informational only                                             |
+| Behaviour under a real WAHA outage, or a WhatsApp ban           | **Not externally verified** | A restriction was seen once, not provoked: [runbook](runbook.md#whatsapp-restricted-the-number) |
 
 ### Isolation and security
 

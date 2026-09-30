@@ -17,6 +17,7 @@ import {
   DomainError,
   IDENTIFIER_GENERATOR_PORT,
   type IdentifierGeneratorPort,
+  isSessionConnecting,
   maskPhoneNumberForLog,
   type NotificationStatus,
   parsePhoneNumber,
@@ -195,9 +196,13 @@ export class CreateNotificationService {
 
     // Prefer a connected session, but accept any: a notification created while
     // WhatsApp is disconnected is queued rather than rejected, which is the
-    // point of having a queue at all.
+    // point of having a queue at all. Failing a connected one, prefer one being
+    // paired, then the newest: a number that dropped is reconnected by pairing
+    // a new connection, and binding to the oldest one left notifications
+    // waiting on a connection nobody was ever going to bring back.
     const connected = sessions.find((session) => canSessionSend(session.status));
-    const chosen = connected ?? sessions[0];
+    const connecting = sessions.findLast((session) => isSessionConnecting(session.status));
+    const chosen = connected ?? connecting ?? sessions.at(-1);
 
     if (chosen === undefined) {
       throw new DomainError(

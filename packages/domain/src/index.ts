@@ -48,6 +48,7 @@ export {
   type CreateSessionInput,
   failed,
   isProviderSessionStatus,
+  isSessionConnecting,
   type ProviderQrCode,
   type ProviderResult,
   type ProviderSession,

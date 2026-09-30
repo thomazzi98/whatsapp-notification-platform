@@ -13,6 +13,8 @@ export type DatabaseTransaction = Parameters<Parameters<Database['transaction']>
 
 export type QueryExecutor = Database | DatabaseTransaction;
 
+const EVENT_INSERT_BATCH_SIZE = 1000;
+
 export interface NotificationRecord {
   readonly id: string;
   readonly applicationId: string;
@@ -138,6 +140,84 @@ export class NotificationRepository {
 
   public async appendEvent(executor: QueryExecutor, input: NotificationEventInput): Promise<void> {
     await executor.insert(notificationEvents).values(input);
+  }
+
+  /**
+   * Inserts many events, a bounded number per statement: Postgres accepts at
+   * most 65,535 bind parameters, and every event carries nine.
+   */
+  public async appendEvents(
+    executor: QueryExecutor,
+    inputs: readonly NotificationEventInput[],
+  ): Promise<void> {
+    for (let start = 0; start < inputs.length; start += EVENT_INSERT_BATCH_SIZE) {
+      await executor
+        .insert(notificationEvents)
+        .values(inputs.slice(start, start + EVENT_INSERT_BATCH_SIZE));
+    }
+  }
+
+  /**
+   * Cancels, in one statement, every notification of an application — or of
+   * one of its connections — that is waiting to be sent.
+   *
+   * Waiting means QUEUED or RETRYING: nothing has left for WhatsApp, and nothing
+   * will until a worker claims it. A notification being dispatched right now is
+   * left alone, because its message may already be on its way, and so is a
+   * scheduled one, whose time has not come and which was waiting on nothing.
+   * Rows a worker has locked are skipped rather than waited for: they are
+   * becoming PROCESSING, which cannot be cancelled either.
+   */
+  public async cancelWaiting(
+    executor: QueryExecutor,
+    input: {
+      readonly applicationId: string;
+      readonly whatsAppSessionId: string | null;
+      readonly now: Date;
+    },
+  ): Promise<readonly { readonly id: string; readonly fromStatus: NotificationStatus }[]> {
+    const result = await executor.execute<{ id: string; from_status: NotificationStatus }>(sql`
+      with waiting as (
+        select id, status
+        from notifications
+        where application_id = ${input.applicationId}::uuid
+          and status in ('QUEUED', 'RETRYING')
+          and (
+            ${input.whatsAppSessionId}::uuid is null
+            or whatsapp_session_id = ${input.whatsAppSessionId}::uuid
+          )
+        for update skip locked
+      )
+      update notifications
+      set status = 'CANCELLED',
+          cancelled_at = ${input.now}::timestamptz,
+          updated_at = ${input.now}::timestamptz,
+          next_attempt_at = null
+      from waiting
+      where notifications.id = waiting.id
+      returning notifications.id, waiting.status as from_status
+    `);
+
+    return result.rows.map((row) => ({ id: row.id, fromStatus: row.from_status }));
+  }
+
+  /** Whether any notification, in any state, was ever queued against a connection. */
+  public async existsForSession(
+    applicationId: string,
+    whatsAppSessionId: string,
+  ): Promise<boolean> {
+    const [found] = await this.database
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.applicationId, applicationId),
+          eq(notifications.whatsAppSessionId, whatsAppSessionId),
+        ),
+      )
+      .limit(1);
+
+    return found !== undefined;
   }
 
   public async findById(

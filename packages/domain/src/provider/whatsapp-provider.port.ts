@@ -30,6 +30,14 @@ export function canSessionSend(status: ProviderSessionStatus): boolean {
   return status === 'WORKING';
 }
 
+/**
+ * A connection somebody is pairing right now: it cannot send yet, but unlike a
+ * stopped or failed one it is about to, with nobody having to go back to it.
+ */
+export function isSessionConnecting(status: ProviderSessionStatus): boolean {
+  return status === 'STARTING' || status === 'SCAN_QR_CODE';
+}
+
 export interface ProviderSession {
   readonly name: string;
   readonly status: ProviderSessionStatus;

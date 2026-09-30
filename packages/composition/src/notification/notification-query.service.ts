@@ -7,6 +7,7 @@ import {
   type NotificationListFilters,
   type NotificationRecord,
   NotificationRepository,
+  WhatsAppSessionRepository,
   withTenantScope,
 } from '@platform/database';
 import {
@@ -224,6 +225,60 @@ export class NotificationQueryService {
       });
 
       return cancelled;
+    });
+  }
+
+  /**
+   * Cancels everything still waiting to be sent, for the whole application or
+   * only what is queued against one of its connections.
+   *
+   * What somebody needs when a connection has gone and the notifications piled
+   * up behind it should not go out: one action, not one per message. Each
+   * notification still gets its own timeline entry, exactly as if it had been
+   * cancelled on its own.
+   */
+  public async cancelWaiting(
+    applicationId: string,
+    scope: { readonly whatsAppSessionId?: string } = {},
+  ): Promise<number> {
+    return withTenantScope(this.connection.database, applicationId, async (transaction) => {
+      if (scope.whatsAppSessionId !== undefined) {
+        const session = await new WhatsAppSessionRepository(transaction).findById(
+          applicationId,
+          scope.whatsAppSessionId,
+        );
+        if (session === undefined) {
+          throw new DomainError(
+            'whatsapp_session_not_found',
+            'That WhatsApp connection does not exist.',
+          );
+        }
+      }
+
+      const notifications = new NotificationRepository(transaction);
+      const cancelled = await notifications.cancelWaiting(transaction, {
+        applicationId,
+        whatsAppSessionId: scope.whatsAppSessionId ?? null,
+        now: this.clock.now(),
+      });
+      const correlationId = getCorrelationId() ?? null;
+
+      await notifications.appendEvents(
+        transaction,
+        cancelled.map((notification) => ({
+          id: this.identifiers.generate(),
+          applicationId,
+          notificationId: notification.id,
+          eventType: 'notification.cancelled',
+          fromStatus: notification.fromStatus,
+          toStatus: 'CANCELLED' as const,
+          attemptNumber: null,
+          payload: {},
+          correlationId,
+        })),
+      );
+
+      return cancelled.length;
     });
   }
 }
