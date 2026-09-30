@@ -24,21 +24,24 @@ export const queueDefinitions: readonly Queue[] = [
   {
     name: queueNames.notificationDispatch,
     /*
-     * `exclusive` keeps at most one live job per singletonKey — the
-     * notification id — while still accepting a new job once the previous one
-     * has completed, which is what a retry needs.
+     * `stately` keeps at most one job per state for each singletonKey — the
+     * notification id — so a notification has at most one job waiting and one
+     * running, and never two of either.
      *
-     * The alternatives were measured rather than assumed, because getting this
-     * wrong fails silently. Under `standard` and `singleton`, duplicate sends
-     * are all accepted and the queue accumulates redundant work. Under `short`
-     * and `stately`, a send after the previous job completed is rejected, which
-     * would have stopped every retry from ever being enqueued.
+     * The job that schedules a retry or a paced send is still running when it
+     * does so. `exclusive`, used before, counts that running job, so it
+     * rejected every one of those follow-ups without an error. The maintenance
+     * pass, meant only as a repair path, ended up releasing all of them at its
+     * once-a-minute tick: the randomised thirty to sixty seconds between sends
+     * never happened, and a paced session sent exactly once a minute, the
+     * mechanical rhythm the pacing exists to avoid. The integration tests
+     * reproduce both the rejection and the fix against real Postgres.
      *
      * None of this is load bearing for correctness: duplicate dispatch is
-     * prevented by the compare-and-swap claim on the notification row. This
-     * only keeps the queue tidy.
+     * prevented by the compare-and-swap claim on the notification row, which
+     * also refuses a job that arrives before the notification is due.
      */
-    policy: 'exclusive',
+    policy: 'stately',
     // A crashed worker must not hold a notification hostage; the stuck-claim
     // reaper depends on this expiring.
     expireInSeconds: 120,

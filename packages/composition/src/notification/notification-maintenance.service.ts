@@ -131,10 +131,10 @@ export class NotificationMaintenanceService {
   /**
    * Re-sends a dispatch job for everything that is due.
    *
-   * This is safe to run repeatedly precisely because the dispatch queue uses an
-   * exclusive policy: a notification that already has a live job accepts no
-   * second one, so a healthy system does nothing here and only a genuinely
-   * orphaned notification is picked back up.
+   * Safe to run repeatedly: a notification that already has a job waiting
+   * accepts no second one, and a job that does slip in early is refused by the
+   * claim until the notification is due. A healthy system does nothing here;
+   * only a genuinely orphaned notification is picked back up.
    */
   private async requeueDueNotifications(): Promise<number> {
     const now = this.clock.now();

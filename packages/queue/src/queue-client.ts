@@ -1,5 +1,5 @@
 import { TENANT_ROLE } from '@platform/database';
-import { PgBoss } from 'pg-boss';
+import { PgBoss, type Queue } from 'pg-boss';
 
 import { grantSendPrivileges } from './grant-send-privileges';
 import { queueDefinitions } from './queue-definitions';
@@ -95,12 +95,40 @@ export async function provisionQueues(connectionUrl: string, schema: string): Pr
     ];
 
     for (const definition of orderedDefinitions) {
-      const { name, ...options } = definition;
-      // Idempotent: an existing queue has its options updated rather than
-      // failing, so re-running the migrate step is safe.
-      await boss.createQueue(name, options);
+      await declareQueue(boss, definition);
     }
   } finally {
     await boss.stop({ graceful: false });
+  }
+}
+
+/**
+ * Brings one queue in line with its definition, so re-running the migrate step
+ * is both safe and effective.
+ *
+ * pg-boss creates a queue only when it is missing, so on its own an existing
+ * installation never saw a changed option. A policy cannot be changed in place
+ * at all, so a queue whose policy differs is dropped and created again. That
+ * discards the jobs it held, which is acceptable for the queues declared here
+ * only because a job is never the record of work: the notifications table is,
+ * and the maintenance pass re-enqueues everything in it that is due within a
+ * minute.
+ */
+async function declareQueue(boss: PgBoss, definition: Queue): Promise<void> {
+  const { name, policy = 'standard', partition, ...adjustable } = definition;
+  const creation = { ...adjustable, policy, ...(partition !== undefined && { partition }) };
+  const existing = await boss.getQueue(name);
+
+  if (existing === null) {
+    await boss.createQueue(name, creation);
+    return;
+  }
+  if (existing.policy !== policy) {
+    await boss.deleteQueue(name);
+    await boss.createQueue(name, creation);
+    return;
+  }
+  if (Object.keys(adjustable).length > 0) {
+    await boss.updateQueue(name, adjustable);
   }
 }

@@ -57,8 +57,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // The exclusive policy means a job left behind by a previous test would
-  // block the next send for the same key.
+  // The dispatch queue keeps one waiting job per key, so a job left behind by a
+  // previous test would block the next send for the same key.
   await boss.deleteQueuedJobs(queueNames.notificationDispatch);
   await connection.database.delete(schema.applications);
   await connection.database.delete(schema.organizations);
@@ -73,6 +73,41 @@ beforeEach(async () => {
   }
   organizationId = organization.id;
 });
+
+async function send(
+  singletonKey: string,
+  correlationId: string,
+  startAfter?: Date,
+): Promise<string | null> {
+  return connection.database.transaction(async (transaction) =>
+    enqueueInTransaction(
+      boss,
+      transaction,
+      queueNames.notificationDispatch,
+      { correlationId, notificationId: singletonKey },
+      { singletonKey, ...(startAfter !== undefined && { startAfter }) },
+    ),
+  );
+}
+
+async function fetchRunning(correlationId: string): Promise<{ id: string }> {
+  const fetched = await fetchCorrelationIds();
+  const running = fetched.find((job) => job.correlationId === correlationId);
+
+  if (running === undefined) {
+    throw new Error(`Expected the job ${correlationId} to be running.`);
+  }
+  return running;
+}
+
+async function fetchCorrelationIds(): Promise<{ id: string; correlationId: string }[]> {
+  const fetched = await boss.fetch(queueNames.notificationDispatch, { batchSize: 10 });
+
+  return fetched.map((job) => ({
+    id: job.id,
+    correlationId: (job.data as { correlationId: string }).correlationId,
+  }));
+}
 
 async function countApplications(slug: string): Promise<number> {
   const rows = await connection.database
@@ -234,7 +269,7 @@ describe('enqueueInTransaction', () => {
     expect(correlationIds).not.toContain('correlation-scheduled');
   });
 
-  it('accepts only one live job per notification', async () => {
+  it('keeps a single waiting job per notification however many are sent', async () => {
     const singletonKey = 'notification-7';
 
     const results = await Promise.all(
@@ -255,9 +290,6 @@ describe('enqueueInTransaction', () => {
   });
 
   it('accepts a new job for the same notification once the previous one completed', async () => {
-    // The reason the queue uses the `exclusive` policy rather than `short` or
-    // `stately`: those reject a send after completion, which would stop every
-    // retry from ever being enqueued.
     const singletonKey = 'notification-8';
 
     const first = await connection.database.transaction(async (transaction) =>
@@ -288,5 +320,46 @@ describe('enqueueInTransaction', () => {
     );
 
     expect(retry).not.toBeNull();
+  });
+
+  it('accepts the follow-up a running dispatch schedules for its own notification', async () => {
+    // What a dispatch does whenever it retries or waits for the pacing window:
+    // it sends the next job while its own is still active. The `exclusive`
+    // policy counted that active job and rejected the send without an error,
+    // so every retry and every paced send waited for the once-a-minute
+    // maintenance pass instead of its own time.
+    const singletonKey = 'notification-9';
+    expect(await send(singletonKey, 'correlation-running')).not.toBeNull();
+
+    const running = await fetchRunning('correlation-running');
+
+    const followUp = await send(
+      singletonKey,
+      'correlation-follow-up',
+      new Date(Date.now() + 45_000),
+    );
+    await boss.complete(queueNames.notificationDispatch, running.id);
+
+    if (followUp === null) {
+      throw new Error('The follow-up was rejected while the first job was running.');
+    }
+    const job = await boss.getJobById(queueNames.notificationDispatch, followUp);
+    expect(job?.state).toBe('created');
+  });
+
+  it('does not start a notification’s next job while its current one is running', async () => {
+    // Two jobs for one notification may exist, but only one may run: a
+    // notification is never dispatched twice at the same moment.
+    const singletonKey = 'notification-10';
+    await send(singletonKey, 'correlation-first');
+    const first = await fetchRunning('correlation-first');
+
+    await send(singletonKey, 'correlation-second');
+    const whileRunning = await fetchCorrelationIds();
+    await boss.complete(queueNames.notificationDispatch, first.id);
+    const afterwards = await fetchCorrelationIds();
+
+    expect(whileRunning.map((job) => job.correlationId)).not.toContain('correlation-second');
+    expect(afterwards.map((job) => job.correlationId)).toContain('correlation-second');
   });
 });

@@ -31,14 +31,15 @@ describe('queue definitions', () => {
     }
   });
 
-  it('keeps the dispatch queue exclusive, so a retry can still be enqueued', () => {
+  it('keeps the dispatch queue stately, so a running dispatch can schedule the next one', () => {
     const dispatch = queueDefinitions.find(
       (definition) => definition.name === queueNames.notificationDispatch,
     );
 
-    // Measured, not assumed: `short` and `stately` reject a send once the
-    // previous job completed, which would stop every retry.
-    expect(dispatch?.policy).toBe('exclusive');
+    // Measured, not assumed, in the transactional enqueue suite: `exclusive`
+    // rejects the follow-up a running job sends, which silently discarded every
+    // retry and every paced send.
+    expect(dispatch?.policy).toBe('stately');
   });
 
   it('expires a dispatch job fast enough for the stuck claim reaper to act', () => {

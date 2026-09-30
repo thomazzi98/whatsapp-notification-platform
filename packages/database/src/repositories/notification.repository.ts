@@ -273,6 +273,11 @@ export class NotificationRepository {
    * pacing window has not opened — and charging those to the customer's attempt
    * budget would exhaust a notification in minutes without WhatsApp ever having
    * been contacted. The budget is consumed by {@link beginAttempt} instead.
+   *
+   * A retry is claimable only once it is due. The queue may hold a second job
+   * for a notification that is already waiting, and without this a job that
+   * arrived early would skip the backoff — or the pacing window — the waiting
+   * one was scheduled to respect.
    */
   public async claimForDispatch(
     applicationId: string,
@@ -280,6 +285,11 @@ export class NotificationRepository {
     claimToken: string,
     now: Date,
   ): Promise<NotificationRecord | undefined> {
+    const retryIsDue = and(
+      eq(notifications.status, 'RETRYING'),
+      lte(notifications.nextAttemptAt, now),
+    );
+    const isClaimable = or(eq(notifications.status, 'QUEUED'), retryIsDue);
     const [claimed] = await this.database
       .update(notifications)
       .set({ status: 'PROCESSING', claimToken, claimedAt: now, updatedAt: now })
@@ -287,7 +297,7 @@ export class NotificationRepository {
         and(
           eq(notifications.id, notificationId),
           eq(notifications.applicationId, applicationId),
-          inArray(notifications.status, ['QUEUED', 'RETRYING']),
+          isClaimable,
         ),
       )
       .returning();
@@ -385,20 +395,25 @@ export class NotificationRepository {
    * Returns notifications that are ready to send right now.
    *
    * The queue is the primary path; this is the repair path. A dispatch job can
-   * be lost — a queue table restored from a backup, a job deleted by hand — and
-   * without a second source of truth the notification would wait forever. The
-   * queue's exclusive policy makes re-enqueuing them free: a key that already
-   * has a live job silently accepts nothing.
+   * be lost — a queue table restored from a backup, a job deleted by hand, a
+   * queue recreated to change its policy — and without a second source of truth
+   * the notification would wait forever. That includes a scheduled one whose
+   * time has come, which nothing else would ever promote. Re-enqueuing is free:
+   * a notification that already has a job waiting accepts no second one.
    */
   public async findDueForDispatch(now: Date, limit: number): Promise<NotificationRecord[]> {
     const retryIsDue = and(
       eq(notifications.status, 'RETRYING'),
       lte(notifications.nextAttemptAt, now),
     );
+    const scheduleIsDue = and(
+      eq(notifications.status, 'SCHEDULED'),
+      lte(notifications.scheduledAt, now),
+    );
     const rows = await this.database
       .select()
       .from(notifications)
-      .where(or(eq(notifications.status, 'QUEUED'), retryIsDue))
+      .where(or(eq(notifications.status, 'QUEUED'), retryIsDue, scheduleIsDue))
       .orderBy(notifications.createdAt)
       .limit(limit);
 

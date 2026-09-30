@@ -143,12 +143,13 @@ describe('the failure vocabulary itself', () => {
       // Produced by the worker and the adapter rather than by this package.
       'maximum_attempts_exhausted',
       'delivery_window_expired',
+      'connection_unavailable',
       'unknown_outcome_fail_closed',
       'provider_acknowledgement_error',
       'provider_outcome_unknown',
     ]);
 
-    expect(declared.size).toBe(19);
+    expect(declared.size).toBe(20);
     for (const code of constructedElsewhere) {
       expect(declared.has(code)).toBe(true);
     }

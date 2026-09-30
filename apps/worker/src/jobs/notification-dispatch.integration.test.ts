@@ -6,6 +6,7 @@ import {
   NotificationMaintenanceService,
   NotificationDeliveryModule,
   ObservabilityModule,
+  QUEUE_CLIENT,
   QueueModule,
   RuntimeModule,
   WhatsAppProviderModule,
@@ -18,9 +19,11 @@ import {
   type NotificationRow,
   type TestDatabaseHandle,
 } from '@platform/testing';
+import { queueNames } from '@platform/queue';
 import { createStubServer } from '@platform/waha-stub';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { type FastifyInstance } from 'fastify';
+import { type PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 /**
@@ -46,6 +49,7 @@ let stubBaseUrl: string;
 let moduleReference: TestingModule;
 let dispatcher: DispatchNotificationService;
 let maintenance: NotificationMaintenanceService;
+let queue: PgBoss;
 let database: TestDatabaseHandle;
 let configuration: ApplicationConfiguration;
 let sessionCounter = 0;
@@ -75,6 +79,7 @@ async function buildContext(overrides: Partial<ApplicationConfiguration> = {}): 
 
   dispatcher = moduleReference.get(DispatchNotificationService);
   maintenance = moduleReference.get(NotificationMaintenanceService);
+  queue = moduleReference.get<PgBoss>(QUEUE_CLIENT);
 }
 
 beforeAll(async () => {
@@ -546,6 +551,89 @@ describe('conditions that are not the message', () => {
     expect(notification.nextAttemptAt?.getTime()).toBeGreaterThan(before + 60_000);
   });
 
+  it('records the wait once, however many times it checks the connection again', async () => {
+    const fixture = await createConnectedTenant({ sessionStatus: 'STOPPED' });
+    // Where an earlier check left it: waiting, and due to look again.
+    const notificationId = await queueNotification(fixture, {
+      recipient: recipients.healthy,
+      status: 'RETRYING',
+      failureCode: 'session_not_ready',
+      nextAttemptAt: new Date(Date.now() - 1000),
+    });
+
+    const before = Date.now();
+    const result = await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+
+    expect(result).toStrictEqual({ outcome: 'deferred', detail: 'session_not_ready' });
+    expect(notification.status).toBe('RETRYING');
+    expect(notification.attemptCount).toBe(0);
+    expect(notification.nextAttemptAt?.getTime()).toBeGreaterThan(before + 60_000);
+    // A connection down for a day once wrote two hundred identical entries into
+    // each notification waiting on it.
+    expect(await database.listEventTypes(notificationId)).toStrictEqual([]);
+    expect(await database.countDispatchJobs(notificationId)).toBe(1);
+  });
+
+  it('fails a notification that waited out the connection rather than sending it late', async () => {
+    const fixture = await createConnectedTenant({ sessionStatus: 'STOPPED' });
+    const waitedMinutes = configuration.delivery.maximumConnectionWaitMinutes + 5;
+    const notificationId = await queueNotification(fixture, {
+      recipient: recipients.healthy,
+      status: 'RETRYING',
+      failureCode: 'session_not_ready',
+      nextAttemptAt: new Date(Date.now() - 1000),
+      createdAt: new Date(Date.now() - waitedMinutes * 60_000),
+    });
+
+    const result = await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+
+    // Well inside the delivery window: the limit is its own, because a number
+    // that reconnects and sends the whole backlog at once gets restricted.
+    expect(result).toStrictEqual({ outcome: 'failed', detail: 'connection_unavailable' });
+    expect(notification.status).toBe('FAILED');
+    expect(notification.failureClassification).toBe('PERMANENT');
+    expect(notification.attemptCount).toBe(0);
+    expect(await database.listSendAttempts(notificationId)).toStrictEqual([]);
+  });
+
+  it('sends what waited less than the limit once the connection is back', async () => {
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, {
+      recipient: recipients.healthy,
+      status: 'RETRYING',
+      failureCode: 'session_not_ready',
+      nextAttemptAt: new Date(Date.now() - 1000),
+      createdAt: new Date(Date.now() - 10 * 60_000),
+    });
+
+    const result = await dispatch(fixture, notificationId);
+
+    expect(result.outcome).toBe('sent');
+  });
+
+  it('does not let an early job skip the time a retry was given', async () => {
+    const fixture = await createConnectedTenant();
+    const nextAttemptAt = new Date(Date.now() + 10 * 60_000);
+    const notificationId = await queueNotification(fixture, {
+      recipient: recipients.healthy,
+      status: 'RETRYING',
+      nextAttemptAt,
+    });
+
+    const result = await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+
+    // A second job for a waiting notification would otherwise send it before
+    // its backoff, or its pacing window, had passed.
+    expect(result).toStrictEqual({ outcome: 'deferred', detail: 'not_yet_due' });
+    expect(notification.status).toBe('RETRYING');
+    expect(notification.nextAttemptAt?.getTime()).toBe(nextAttemptAt.getTime());
+    expect(await database.listSendAttempts(notificationId)).toStrictEqual([]);
+    expect(await database.countDispatchJobs(notificationId)).toBe(1);
+  });
+
   it('defers the second send on a session without spending an attempt', async () => {
     const fixture = await createConnectedTenant({ pacingSeconds: 45 });
     const first = await queueNotification(fixture, { recipient: recipients.healthy });
@@ -630,6 +718,39 @@ describe('conditions that are not the message', () => {
   });
 });
 
+describe('a dispatch running inside its own job', () => {
+  it('schedules the paced send itself instead of leaving it to maintenance', async () => {
+    // How the worker actually runs a dispatch: inside a job that is still
+    // active while it schedules the next one. The queue used to reject that
+    // follow-up without an error, so every paced send and every retry waited
+    // for the once-a-minute maintenance pass, and a busy connection sent
+    // exactly once a minute.
+    const fixture = await createConnectedTenant({ pacingSeconds: 45 });
+    const first = await queueNotification(fixture, { recipient: recipients.healthy });
+    const second = await queueNotification(fixture, { recipient: recipients.healthy });
+    await dispatch(fixture, first);
+
+    await queue.deleteQueuedJobs(queueNames.notificationDispatch);
+    await queue.send(
+      queueNames.notificationDispatch,
+      { correlationId: 'correlation-for-test', notificationId: second },
+      { singletonKey: second },
+    );
+    const [running] = await queue.fetch(queueNames.notificationDispatch, { batchSize: 1 });
+    if (running === undefined) {
+      throw new Error('Expected the dispatch job to be running.');
+    }
+
+    const result = await dispatch(fixture, second);
+    const scheduled = await database.countDispatchJobs(second);
+    await queue.complete(queueNames.notificationDispatch, running.id);
+
+    expect(result.detail).toBe('send_pacing');
+    // The running job and the one it scheduled for the pacing window.
+    expect(scheduled).toBe(2);
+  });
+});
+
 describe('two workers racing for the same notification', () => {
   it('sends it exactly once', async () => {
     const fixture = await createConnectedTenant();
@@ -680,6 +801,21 @@ describe('maintenance', () => {
     const notification = await readNotification(notificationId);
 
     expect(notification.status).toBe('PROCESSING');
+  });
+
+  it('re-enqueues a scheduled notification whose time came and whose job was lost', async () => {
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, {
+      recipient: recipients.healthy,
+      status: 'SCHEDULED',
+      scheduledAt: new Date(Date.now() - 60_000),
+    });
+
+    const report = await maintenance.runOnce();
+
+    // Nothing else would ever promote it: the queue is not the record of work.
+    expect(report.requeuedNotifications).toBe(1);
+    expect(await database.countDispatchJobs(notificationId)).toBe(1);
   });
 
   it('re-enqueues a notification whose dispatch job was lost', async () => {

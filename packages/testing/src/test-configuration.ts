@@ -33,7 +33,11 @@ export function createTestConfiguration(
       pollingIntervalSeconds: 1,
       shutdownTimeoutSeconds: 5,
     },
-    delivery: { maximumLifetimeHours: 24, stuckClaimTimeoutSeconds: 300 },
+    delivery: {
+      maximumLifetimeHours: 24,
+      maximumConnectionWaitMinutes: 60,
+      stuckClaimTimeoutSeconds: 300,
+    },
     whatsAppProvider: {
       baseUrl: 'http://waha.invalid:3000',
       apiKey: 'a-test-waha-api-key',

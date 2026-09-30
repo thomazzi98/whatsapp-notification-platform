@@ -89,6 +89,10 @@ export const environmentSchema = z.object({
     description:
       'How long a notification may stay undelivered before it is failed. A message pending for a day is no longer the message the caller meant to send.',
   }),
+  DELIVERY_MAXIMUM_CONNECTION_WAIT_MINUTES: positiveInteger.default(60).meta({
+    description:
+      'How long a notification may wait for its WhatsApp connection to be able to send before it is failed instead of sent late. A number that comes back after a long outage and sends the whole backlog at once is what gets restricted for spam.',
+  }),
   DELIVERY_STUCK_CLAIM_TIMEOUT_SECONDS: positiveInteger.default(300).meta({
     description:
       'How long a dispatch claim may be held before it is treated as abandoned by a crashed worker.',

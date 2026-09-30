@@ -24,6 +24,7 @@ export interface QueueConfiguration {
 
 export interface DeliveryConfiguration {
   readonly maximumLifetimeHours: number;
+  readonly maximumConnectionWaitMinutes: number;
   readonly stuckClaimTimeoutSeconds: number;
 }
 
@@ -93,6 +94,7 @@ export function toApplicationConfiguration(
     },
     delivery: {
       maximumLifetimeHours: environment.DELIVERY_MAXIMUM_LIFETIME_HOURS,
+      maximumConnectionWaitMinutes: environment.DELIVERY_MAXIMUM_CONNECTION_WAIT_MINUTES,
       stuckClaimTimeoutSeconds: environment.DELIVERY_STUCK_CLAIM_TIMEOUT_SECONDS,
     },
     whatsAppProvider: {

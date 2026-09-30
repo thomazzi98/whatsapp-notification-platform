@@ -69,7 +69,11 @@ type UnknownOutcomePolicy = 'RETRY' | 'FAIL_CLOSED';
 type ClaimResult =
   | { readonly kind: 'claimed'; readonly notification: NotificationRecord }
   | { readonly kind: 'not_claimable' }
-  | { readonly kind: 'not_due'; readonly dueAt: Date };
+  | {
+      readonly kind: 'not_due';
+      readonly dueAt: Date;
+      readonly reason: 'not_yet_scheduled' | 'not_yet_due';
+    };
 
 interface TransitionStep {
   readonly nextStatus: NotificationStatus;
@@ -171,7 +175,17 @@ export class DispatchNotificationService {
       existing.scheduledAt !== null &&
       existing.scheduledAt.getTime() > now.getTime()
     ) {
-      return { kind: 'not_due', dueAt: existing.scheduledAt };
+      return { kind: 'not_due', dueAt: existing.scheduledAt, reason: 'not_yet_scheduled' };
+    }
+    // A second job for a notification that is already waiting: the repair path
+    // and a retry can both send one. It must not skip the backoff or the pacing
+    // window the waiting one was scheduled to respect.
+    if (
+      existing?.status === 'RETRYING' &&
+      existing.nextAttemptAt !== null &&
+      existing.nextAttemptAt.getTime() > now.getTime()
+    ) {
+      return { kind: 'not_due', dueAt: existing.nextAttemptAt, reason: 'not_yet_due' };
     }
     return { kind: 'not_claimable' };
   }
@@ -200,10 +214,16 @@ export class DispatchNotificationService {
    * backlog of retries.
    */
   private hasOutlivedDeliveryWindow(notification: NotificationRecord): boolean {
-    const eligibleSince = notification.scheduledAt ?? notification.createdAt;
     const windowMilliseconds = this.configuration.delivery.maximumLifetimeHours * 3_600_000;
 
-    return this.clock.now().getTime() - eligibleSince.getTime() > windowMilliseconds;
+    return this.millisecondsSinceDue(notification) > windowMilliseconds;
+  }
+
+  /** How long the notification has been free to go out: since its schedule, or since it was made. */
+  private millisecondsSinceDue(notification: NotificationRecord): number {
+    const eligibleSince = notification.scheduledAt ?? notification.createdAt;
+
+    return this.clock.now().getTime() - eligibleSince.getTime();
   }
 
   private async readUnknownOutcomePolicy(applicationId: string): Promise<UnknownOutcomePolicy> {
@@ -530,17 +550,19 @@ export class DispatchNotificationService {
   }
 
   /**
-   * Returns a paced notification to the queue without charging it an attempt.
+   * Returns a notification to the queue without charging it an attempt or
+   * writing to its timeline.
    *
-   * Pacing is a decision the platform makes about WhatsApp rather than
-   * something that happened to the message, so it writes no timeline event: a
-   * busy session would otherwise bury the real history under hundreds of
-   * "waited" entries.
+   * For decisions the platform makes about WhatsApp rather than things that
+   * happened to the message (the pacing window has not opened, the connection
+   * is still down), which would otherwise bury the real history under hundreds
+   * of "waited" entries.
    */
-  private async deferForPacing(
+  private async deferQuietly(
     notification: NotificationRecord,
-    nextSendAllowedAt: Date,
+    until: Date,
     input: DispatchInput,
+    detail: string,
   ): Promise<DispatchResult> {
     const now = this.clock.now();
 
@@ -550,13 +572,60 @@ export class DispatchNotificationService {
         notificationId: notification.id,
         expectedStatus: 'PROCESSING',
         nextStatus: 'RETRYING',
-        changes: { nextAttemptAt: nextSendAllowedAt, claimToken: null, claimedAt: null },
+        changes: { nextAttemptAt: until, claimToken: null, claimedAt: null },
         now,
       });
-      await this.enqueueNextAttempt(transaction, notification, nextSendAllowedAt, input);
+      await this.enqueueNextAttempt(transaction, notification, until, input);
     });
 
-    return { outcome: 'deferred', detail: 'send_pacing' };
+    return { outcome: 'deferred', detail };
+  }
+
+  /**
+   * Holds a notification whose connection cannot send, for a limited time.
+   *
+   * Waiting costs no attempt: nothing was tried, and somebody has to reconnect
+   * WhatsApp before anything could be. But the wait ends long before the
+   * delivery window does. A number that comes back after an outage would
+   * otherwise send the whole backlog in a row (stale messages, to people who
+   * stopped expecting them, straight after reconnecting), which is exactly the
+   * traffic WhatsApp restricts numbers for.
+   *
+   * Only the first check is written to the timeline. Every later one repeats
+   * the same fact, and a connection that was down for a day once wrote two
+   * hundred identical entries into each notification waiting on it.
+   */
+  private async waitForConnection(
+    notification: NotificationRecord,
+    session: WhatsAppSessionRecord,
+    input: DispatchInput,
+  ): Promise<DispatchResult> {
+    const waitMinutes = this.configuration.delivery.maximumConnectionWaitMinutes;
+
+    if (this.millisecondsSinceDue(notification) > waitMinutes * 60_000) {
+      return this.fail(
+        notification,
+        createProviderFailure(
+          'connection_unavailable',
+          `The WhatsApp connection could not send for more than ${String(waitMinutes)} minutes (it is ${session.status}), so the message was not sent late.`,
+        ),
+        input,
+      );
+    }
+
+    const failure = createProviderFailure(
+      'session_not_ready',
+      `The WhatsApp connection is ${session.status} and cannot send.`,
+    );
+
+    if (notification.failureCode !== failure.code) {
+      return this.retry(notification, failure, input, sessionNotReadyMinimumDelaySeconds);
+    }
+
+    const checkAgainAt = new Date(
+      this.clock.now().getTime() + sessionNotReadyMinimumDelaySeconds * 1000,
+    );
+    return this.deferQuietly(notification, checkAgainAt, input, failure.code);
   }
 
   private async retry(
@@ -713,12 +782,12 @@ export class DispatchNotificationService {
       return { outcome: 'not_claimable' };
     }
     if (claim.kind === 'not_due') {
-      // A job that arrived before its scheduled time — clock skew, or a
-      // requeue. Returning without rescheduling would strand the notification
-      // in SCHEDULED with nothing left to dispatch it.
+      // A job that arrived early: clock skew, a requeue, a second job for a
+      // notification already waiting. Returning without rescheduling could
+      // strand the notification with nothing left to dispatch it.
       await this.reschedule(input, claim.dueAt);
 
-      return { outcome: 'deferred', detail: 'not_yet_scheduled' };
+      return { outcome: 'deferred', detail: claim.reason };
     }
 
     const claimed = claim.notification;
@@ -767,23 +836,12 @@ export class DispatchNotificationService {
     }
 
     if (!canSessionSend(session.status)) {
-      // Not a delivery failure: a human has to reconnect WhatsApp. It costs no
-      // attempt, so a disconnection of any length is survivable and the backlog
-      // flows again the moment the connection returns.
-      return this.retry(
-        claimed,
-        createProviderFailure(
-          'session_not_ready',
-          `The WhatsApp connection is ${session.status} and cannot send.`,
-        ),
-        input,
-        sessionNotReadyMinimumDelaySeconds,
-      );
+      return this.waitForConnection(claimed, session, input);
     }
 
     const slot = await this.whatsAppSessions.reserveSendSlot(session.id, this.clock.now());
     if (!slot.reserved) {
-      return this.deferForPacing(claimed, slot.nextSendAllowedAt, input);
+      return this.deferQuietly(claimed, slot.nextSendAllowedAt, input, 'send_pacing');
     }
 
     return this.deliver(claimed, session, claimToken, input);

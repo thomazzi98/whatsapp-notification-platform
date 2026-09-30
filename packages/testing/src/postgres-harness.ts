@@ -129,6 +129,8 @@ export interface NotificationFixture {
   readonly scheduledAt?: Date;
   readonly nextAttemptAt?: Date;
   readonly createdAt?: Date;
+  /** Why an earlier dispatch left it RETRYING, when a test starts from there. */
+  readonly failureCode?: string;
   /**
    * Set together with a SENT status. The transition trigger refuses shortcuts
    * on update — correctly — so a fixture that needs an already-sent
@@ -281,14 +283,14 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
         insert into notifications
           (id, application_id, whatsapp_session_id, status, recipient_phone_number,
            rendered_body, maximum_attempts, attempt_count, scheduled_at, next_attempt_at,
-           created_at, provider_message_id, sent_at)
+           created_at, provider_message_id, sent_at, failure_code)
         values (gen_random_uuid(), ${input.applicationId}, ${input.whatsAppSessionId},
                 ${input.status ?? 'QUEUED'}, ${input.recipient ?? '+5511999990000'},
                 ${input.body ?? 'Your order has shipped.'},
                 ${input.maximumAttempts ?? 5}, ${input.attemptCount ?? 0},
                 ${input.scheduledAt ?? null}, ${input.nextAttemptAt ?? null},
                 ${input.createdAt ?? new Date()}, ${input.providerMessageId ?? null},
-                ${input.sentAt ?? null})
+                ${input.sentAt ?? null}, ${input.failureCode ?? null})
         returning id
       `,
         'notification',

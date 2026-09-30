@@ -22,6 +22,7 @@ export const providerFailureCodes = [
   'unknown_outcome_fail_closed',
   'maximum_attempts_exhausted',
   'delivery_window_expired',
+  'connection_unavailable',
 ] as const;
 
 export type ProviderFailureCode = (typeof providerFailureCodes)[number];
@@ -37,14 +38,17 @@ export interface ProviderFailure {
 /**
  * The single table mapping a failure to what the platform does about it.
  *
- * Three entries deserve explanation. `provider_unauthorized` is permanent and
+ * Four entries deserve explanation. `provider_unauthorized` is permanent and
  * operator-actionable: it means the platform's own WAHA credentials are wrong,
  * so every send will fail until a human fixes it, and retrying only hides that.
  * `provider_acknowledgement_error` is permanent because the message was already
  * handed to WhatsApp — resending could deliver it twice. `provider_outcome_unknown`
  * is retryable because the platform's default answer to an ambiguous send is to
  * try again; the tenant that would rather lose a message than risk sending it
- * twice opts into `unknown_outcome_fail_closed` instead.
+ * twice opts into `unknown_outcome_fail_closed` instead. `connection_unavailable`
+ * is permanent although the connection may well come back: a message that
+ * waited out an outage is sent late or not at all, and sending a whole
+ * backlog the moment a number reconnects is the burst that gets it restricted.
  */
 const classificationByCode: Record<ProviderFailureCode, FailureClassification> = {
   provider_unreachable: 'RETRYABLE',
@@ -67,6 +71,7 @@ const classificationByCode: Record<ProviderFailureCode, FailureClassification> =
   unknown_outcome_fail_closed: 'PERMANENT',
   maximum_attempts_exhausted: 'PERMANENT',
   delivery_window_expired: 'PERMANENT',
+  connection_unavailable: 'PERMANENT',
 };
 
 /**
