@@ -79,6 +79,8 @@ export interface TestDatabaseHandle {
    * pulling the entire API into its dependency graph.
    */
   insertApplication: (options?: ApplicationFixtureOptions) => Promise<string>;
+  /** What the platform has recorded about a connection's account and its pause. */
+  readWhatsAppSession: (sessionId: string) => Promise<WhatsAppSessionRow | undefined>;
   insertNotification: (input: NotificationFixture) => Promise<string>;
   readNotification: (notificationId: string) => Promise<NotificationRow | undefined>;
   listEventTypes: (notificationId: string) => Promise<string[]>;
@@ -112,6 +114,17 @@ export interface WhatsAppSessionFixtureOptions {
   readonly status?: string;
   readonly sendPacingMinimumSeconds?: number;
   readonly sendPacingMaximumSeconds?: number;
+  /** Starts the connection paused, as a reachout timelock would leave it. */
+  readonly sendingPausedUntil?: Date;
+}
+
+export interface WhatsAppSessionRow {
+  readonly status: string;
+  readonly lastError: string | null;
+  readonly sendingPausedUntil: Date | null;
+  readonly sendingPausedReason: string | null;
+  readonly accountLimitsCheckedAt: Date | null;
+  readonly accountLimits: Record<string, unknown> | null;
 }
 
 export interface ApplicationFixtureOptions {
@@ -251,11 +264,14 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
         insert into whatsapp_sessions
           (application_id, provider_session_name, display_name,
            webhook_signing_key_ciphertext, status,
-           send_pacing_minimum_seconds, send_pacing_maximum_seconds)
+           send_pacing_minimum_seconds, send_pacing_maximum_seconds,
+           sending_paused_until, sending_paused_reason)
         values (${applicationId}, ${providerSessionName}, 'Test connection',
                 decode('00', 'hex'), ${options.status ?? 'WORKING'},
                 ${options.sendPacingMinimumSeconds ?? 30},
-                ${options.sendPacingMaximumSeconds ?? 60})
+                ${options.sendPacingMaximumSeconds ?? 60},
+                ${options.sendingPausedUntil ?? null},
+                ${options.sendingPausedUntil === undefined ? null : 'REACHOUT_TIMELOCK'})
         returning id
       `,
         'WhatsApp session',
@@ -295,6 +311,28 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
       `,
         'notification',
       ),
+    readWhatsAppSession: async (sessionId) => {
+      const result = await connection.database.execute<
+        WhatsAppSessionRow & Record<string, unknown>
+      >(sql`
+        select status, last_error as "lastError",
+               sending_paused_until as "sendingPausedUntil",
+               sending_paused_reason as "sendingPausedReason",
+               account_limits_checked_at as "accountLimitsCheckedAt",
+               account_limits as "accountLimits"
+        from whatsapp_sessions where id = ${sessionId}
+      `);
+      const row = result.rows[0];
+
+      if (row === undefined) {
+        return undefined;
+      }
+      return {
+        ...row,
+        sendingPausedUntil: toDate(row.sendingPausedUntil),
+        accountLimitsCheckedAt: toDate(row.accountLimitsCheckedAt),
+      };
+    },
     readNotification: async (notificationId) => {
       const result = await connection.database.execute<
         NotificationRow & Record<string, unknown>

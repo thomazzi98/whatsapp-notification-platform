@@ -455,6 +455,14 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
     const chatIdentifier = body.chatId ?? '';
     const session = sessions.find(body.session ?? 'default');
 
+    // As the real server answers for a session it has never heard of: a wiped
+    // volume, or an engine change that moved every session out of reach.
+    if (session === undefined) {
+      return reply
+        .status(404)
+        .send({ message: `We didn't find a session with name '${body.session ?? 'default'}'.` });
+    }
+
     const mode =
       forcedFailureMode === 'none' ? failureModeForRecipient(chatIdentifier) : forcedFailureMode;
 
@@ -481,11 +489,11 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
     if (failure !== undefined) {
       // A refusal for reaching out also changes what the account reports, as it
       // does on the engine that refreshes its record when WhatsApp refuses.
-      if (session !== undefined && mode === 'reachout_timelock') {
+      if (mode === 'reachout_timelock') {
         applyRestriction(session, { timelockMinutes: 60 }, Date.now());
         await announceRestrictions(session);
       }
-      if (session !== undefined && mode === 'message_capping') {
+      if (mode === 'message_capping') {
         applyRestriction(
           session,
           { cappingStatus: 'CAPPED', usedQuota: 50, totalQuota: 50 },

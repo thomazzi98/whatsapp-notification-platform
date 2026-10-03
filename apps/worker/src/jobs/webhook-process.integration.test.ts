@@ -210,6 +210,34 @@ describe('applying a delivery acknowledgement', () => {
   });
 });
 
+describe('a delivery that failed after the send', () => {
+  it('makes the next send ask WhatsApp about the account again', async () => {
+    // A refusal for reaching out usually arrives this way, as a failed
+    // delivery, rather than as an error on the send.
+    const fixture = await createFixture();
+    await createSentNotification(fixture, 'message-refused');
+    // A report recorded a moment ago, which would otherwise spare the next
+    // send a lookup for ten minutes.
+    await processor.process(
+      await database.insertWebhookDelivery({
+        applicationId: fixture.applicationId,
+        whatsAppSessionId: fixture.whatsAppSessionId,
+        providerEventId: 'session-event-working',
+        eventType: 'session.status',
+        providerSessionName: fixture.providerSessionName,
+        payload: { name: fixture.providerSessionName, status: 'WORKING', data: null },
+      }),
+    );
+    const before = await database.readWhatsAppSession(fixture.whatsAppSessionId);
+
+    await processor.process(await fileAcknowledgement(fixture, { id: 'message-refused', ack: -1 }));
+    const after = await database.readWhatsAppSession(fixture.whatsAppSessionId);
+
+    expect(before?.accountLimitsCheckedAt).not.toBeNull();
+    expect(after?.accountLimitsCheckedAt).toBeNull();
+  });
+});
+
 describe('applying a session status change', () => {
   it('records the paired account on the connection', async () => {
     const fixture = await createFixture();
@@ -225,6 +253,63 @@ describe('applying a session status change', () => {
     const result = await processor.process(deliveryId);
 
     expect(result).toEqual({ outcome: 'APPLIED', detail: 'session SCAN_QR_CODE' });
+  });
+
+  it('pauses the connection the moment WhatsApp reports a timelock', async () => {
+    const fixture = await createFixture();
+    const endsAtSeconds = Math.floor(Date.now() / 1000) + 2 * 3600;
+    const deliveryId = await database.insertWebhookDelivery({
+      applicationId: fixture.applicationId,
+      whatsAppSessionId: fixture.whatsAppSessionId,
+      providerEventId: 'session-event-restricted',
+      eventType: 'session.status',
+      providerSessionName: fixture.providerSessionName,
+      payload: {
+        name: fixture.providerSessionName,
+        status: 'WORKING',
+        statuses: [],
+        data: {
+          reachoutTimelock: {
+            isActive: true,
+            timeEnforcementEnds: endsAtSeconds,
+            enforcementType: 'DEFAULT',
+          },
+        },
+      },
+    });
+
+    await processor.process(deliveryId);
+    const session = await database.readWhatsAppSession(fixture.whatsAppSessionId);
+
+    expect(session?.sendingPausedReason).toBe('REACHOUT_TIMELOCK');
+    expect(session?.sendingPausedUntil?.getTime()).toBe(endsAtSeconds * 1000);
+    expect(session?.accountLimits).toMatchObject({ reachoutTimelock: { isActive: true } });
+  });
+
+  it('does not lift a pause because a later status says nothing about one', async () => {
+    // WAHA leaves a lifted timelock out of the status, but it also leaves out
+    // one it has not learned of yet. Only the pause running out ends it.
+    const fixture = await createFixture();
+    const statusFor = async (eventId: string, data: unknown): Promise<string> =>
+      database.insertWebhookDelivery({
+        applicationId: fixture.applicationId,
+        whatsAppSessionId: fixture.whatsAppSessionId,
+        providerEventId: eventId,
+        eventType: 'session.status',
+        providerSessionName: fixture.providerSessionName,
+        payload: { name: fixture.providerSessionName, status: 'WORKING', data },
+      });
+    const endsAtSeconds = Math.floor(Date.now() / 1000) + 3600;
+
+    await processor.process(
+      await statusFor('restricted', {
+        reachoutTimelock: { isActive: true, timeEnforcementEnds: endsAtSeconds },
+      }),
+    );
+    await processor.process(await statusFor('silent', null));
+    const session = await database.readWhatsAppSession(fixture.whatsAppSessionId);
+
+    expect(session?.sendingPausedUntil?.getTime()).toBe(endsAtSeconds * 1000);
   });
 
   it('skips an event type it has no rule for, rather than failing the callback', async () => {

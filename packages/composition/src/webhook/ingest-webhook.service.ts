@@ -15,6 +15,7 @@ import {
   isWebhookSignatureValid,
   isWebhookTimestampAcceptable,
   parseWebhookEnvelope,
+  toStoredPayload,
 } from '@platform/provider-whatsapp';
 import { enqueueInTransaction, queueNames } from '@platform/queue';
 import { decryptSecret } from '@platform/security';
@@ -154,7 +155,10 @@ export class IngestWebhookService {
         providerEventId: envelope.id,
         eventType: envelope.event,
         providerSessionName: envelope.session,
-        payload: envelope.payload,
+        // Trimmed to what processing reads: a receipt from the WEBJS engine
+        // carries the whole message, text included, and the inbox is no place
+        // for a second copy of every notification's body.
+        payload: toStoredPayload(envelope.event, envelope.payload),
         receivedAt: now,
       });
 

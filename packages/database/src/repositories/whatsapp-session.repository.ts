@@ -1,8 +1,38 @@
-import { type ProviderSessionStatus } from '@platform/domain';
-import { and, eq, sql } from 'drizzle-orm';
+import {
+  type AccountLimits,
+  type ProviderSessionStatus,
+  type SendingPause,
+  type SendingPauseReason,
+} from '@platform/domain';
+import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { type QueryExecutor } from './notification.repository';
-import { whatsAppSessions } from '../schema';
+import { type StoredAccountLimits, whatsAppSessions } from '../schema';
+
+function toStoredAccountLimits(limits: AccountLimits): StoredAccountLimits {
+  const timelock = limits.reachoutTimelock;
+  const quota = limits.newChatQuota;
+
+  return {
+    reachoutTimelock:
+      timelock === null
+        ? null
+        : {
+            isActive: timelock.isActive,
+            endsAt: timelock.endsAt?.toISOString() ?? null,
+            enforcementType: timelock.enforcementType,
+          },
+    newChatQuota:
+      quota === null
+        ? null
+        : {
+            status: quota.status,
+            total: quota.total,
+            used: quota.used,
+            cycleEndsAt: quota.cycleEndsAt?.toISOString() ?? null,
+          },
+  };
+}
 
 export interface WhatsAppSessionRecord {
   readonly id: string;
@@ -17,6 +47,12 @@ export interface WhatsAppSessionRecord {
   readonly sendPacingMinimumSeconds: number;
   readonly sendPacingMaximumSeconds: number;
   readonly nextSendAllowedAt: Date;
+  /** Nothing is sent from the connection before this; null when no pause is in force. */
+  readonly sendingPausedUntil: Date | null;
+  readonly sendingPausedReason: SendingPauseReason | null;
+  /** The last report of WhatsApp's limits on the account, for the dashboard. */
+  readonly accountLimits: StoredAccountLimits | null;
+  readonly accountLimitsCheckedAt: Date | null;
   readonly lastStatusAt: Date;
   readonly lastError: string | null;
   readonly createdAt: Date;
@@ -141,6 +177,98 @@ export class WhatsAppSessionRepository {
         updatedAt: input.now,
       })
       .where(eq(whatsAppSessions.id, sessionId));
+  }
+
+  /**
+   * Claims the next refresh of the account's limits, if the last one is old.
+   *
+   * The time is stamped before WhatsApp is asked, so concurrent workers ask
+   * once between them and a lookup that keeps failing is not repeated on every
+   * dispatch. False means somebody refreshed recently enough.
+   */
+  public async claimAccountLimitsRefresh(
+    sessionId: string,
+    now: Date,
+    staleBefore: Date,
+  ): Promise<boolean> {
+    const isStale = or(
+      isNull(whatsAppSessions.accountLimitsCheckedAt),
+      lt(whatsAppSessions.accountLimitsCheckedAt, staleBefore),
+    );
+    const claimed = await this.database
+      .update(whatsAppSessions)
+      .set({ accountLimitsCheckedAt: now })
+      .where(and(eq(whatsAppSessions.id, sessionId), isStale))
+      .returning({ id: whatsAppSessions.id });
+
+    return claimed.length > 0;
+  }
+
+  /**
+   * Makes the next dispatch ask about the limits again, whenever the last ask
+   * was. For a refusal reported after the fact, as a failed delivery, which is
+   * reason enough to doubt the last answer.
+   */
+  public async invalidateAccountLimits(sessionId: string): Promise<void> {
+    await this.database
+      .update(whatsAppSessions)
+      .set({ accountLimitsCheckedAt: null })
+      .where(eq(whatsAppSessions.id, sessionId));
+  }
+
+  /**
+   * Records what WhatsApp reports, and the pause it calls for, if any.
+   *
+   * A pause is only ever extended here, never shortened — the later of the one
+   * in force and the new one wins, in the statement itself, so two reports
+   * arriving together cannot undo each other. Only the passing of time, or
+   * {@link endSendingPause}, ends one.
+   */
+  public async recordAccountLimits(
+    sessionId: string,
+    input: {
+      readonly limits: AccountLimits | null;
+      readonly pause: SendingPause | undefined;
+      readonly now: Date;
+    },
+  ): Promise<void> {
+    const pause = input.pause;
+
+    await this.database
+      .update(whatsAppSessions)
+      .set({
+        ...(input.limits !== null && {
+          accountLimits: toStoredAccountLimits(input.limits),
+          accountLimitsCheckedAt: input.now,
+        }),
+        ...(pause !== undefined && {
+          sendingPausedUntil: sql`greatest(
+            coalesce(${whatsAppSessions.sendingPausedUntil}, ${pause.pausedUntil}),
+            ${pause.pausedUntil}
+          )`,
+          sendingPausedReason: pause.reason,
+        }),
+        updatedAt: input.now,
+      })
+      .where(eq(whatsAppSessions.id, sessionId));
+  }
+
+  /**
+   * Lifts a pause whose time has run out, once WhatsApp has been asked again.
+   *
+   * Conditional on the end the caller saw, so a pause another report extended
+   * in the meantime is left alone.
+   */
+  public async endSendingPause(sessionId: string, observedPausedUntil: Date): Promise<void> {
+    await this.database
+      .update(whatsAppSessions)
+      .set({ sendingPausedUntil: null, sendingPausedReason: null })
+      .where(
+        and(
+          eq(whatsAppSessions.id, sessionId),
+          eq(whatsAppSessions.sendingPausedUntil, observedPausedUntil),
+        ),
+      );
   }
 
   /**

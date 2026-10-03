@@ -64,6 +64,7 @@ beforeAll(async () => {
       requestTimeoutMilliseconds: 2000,
       webhookPublicUrl: apiBaseUrl,
       webhookToleranceSeconds: 300,
+      simulateTyping: false,
     },
   });
 

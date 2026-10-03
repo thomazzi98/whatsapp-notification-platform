@@ -18,11 +18,13 @@ import {
   CLOCK_PORT,
   type ClockPort,
   computeNextAttemptAt,
+  computeTypingMilliseconds,
   createProviderFailure,
   defaultRetryPolicy,
   IDENTIFIER_GENERATOR_PORT,
   type IdentifierGeneratorPort,
   isRetryable,
+  isSendingPaused,
   hasUnknownOutcome,
   maskPhoneNumberForLog,
   type NotificationStatus,
@@ -39,6 +41,25 @@ import { Inject, Injectable } from '@nestjs/common';
 import { type PgBoss } from 'pg-boss';
 
 import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION, QUEUE_CLIENT } from '../tokens';
+import { ConnectionStateService } from '../whatsapp/connection-state.service';
+
+/**
+ * Spreads the notifications held by one pause over its first minute, so they
+ * do not all wake at the same instant. Pacing would space their sends anyway;
+ * this spares it a stampede of claims.
+ */
+const PAUSE_RESUMPTION_SPREAD_SECONDS = 60;
+
+/**
+ * The provider answered as though it had never heard of the session: its
+ * state was wiped, or the engine changed underneath it. That is a lost
+ * connection, waited for like any other, not a message that can never be sent.
+ * A session missing from the platform's own records carries no provider
+ * status, and stays the permanent failure it is.
+ */
+function isSessionLostByProvider(failure: ProviderFailure): boolean {
+  return failure.code === 'session_missing' && failure.providerStatusCode !== undefined;
+}
 
 export interface DispatchInput {
   readonly applicationId: string;
@@ -100,6 +121,7 @@ export class DispatchNotificationService {
   private readonly identifiers: IdentifierGeneratorPort;
   private readonly queue: PgBoss;
   private readonly configuration: ApplicationConfiguration;
+  private readonly connectionState: ConnectionStateService;
 
   public constructor(
     @Inject(DATABASE_CONNECTION) connection: DatabaseConnection,
@@ -109,6 +131,7 @@ export class DispatchNotificationService {
     @Inject(IDENTIFIER_GENERATOR_PORT) identifiers: IdentifierGeneratorPort,
     @Inject(QUEUE_CLIENT) queue: PgBoss,
     @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
+    connectionState: ConnectionStateService,
   ) {
     this.connection = connection;
     this.notifications = new NotificationRepository(connection.database);
@@ -121,6 +144,7 @@ export class DispatchNotificationService {
     this.identifiers = identifiers;
     this.queue = queue;
     this.configuration = configuration;
+    this.connectionState = connectionState;
   }
 
   /**
@@ -252,7 +276,16 @@ export class DispatchNotificationService {
       return recipient.result;
     }
 
-    const attempt = await this.beginAttempt(notification, claimToken);
+    await this.showTyping(notification, session, recipient.chatIdentifier, input);
+    if (input.abortSignal?.aborted === true) {
+      // The worker began shutting down while "typing…" was up. Nothing has
+      // been sent and no attempt spent, so the notification goes back to the
+      // queue as it was: sending now would only abort mid-request, and leave
+      // an outcome nobody can determine where there was none.
+      return this.deferQuietly(notification, this.clock.now(), input, 'worker_stopping');
+    }
+
+    const attempt = await this.beginAttempt(notification, claimToken, recipient.chatIdentifier);
     if (attempt === undefined) {
       // The claim was reaped while this worker was still preparing. Another
       // worker owns the notification now, and must not have an attempt consumed
@@ -285,7 +318,13 @@ export class DispatchNotificationService {
     });
 
     if (result.outcome === 'failed') {
-      return this.handleSendFailure(notification, attempt.attemptNumber, result.failure, input);
+      return this.handleSendFailure(
+        notification,
+        session,
+        attempt.attemptNumber,
+        result.failure,
+        input,
+      );
     }
 
     const now = this.clock.now();
@@ -357,6 +396,7 @@ export class DispatchNotificationService {
 
   private async handleSendFailure(
     notification: NotificationRecord,
+    session: WhatsAppSessionRecord,
     attemptNumber: number,
     failure: ProviderFailure,
     input: DispatchInput,
@@ -369,6 +409,17 @@ export class DispatchNotificationService {
 
     await this.resolveAttempt(notification, attemptNumber, 'FAILED', { failureCode: failure.code });
 
+    // WhatsApp refused it for the account's reach. Recorded before the
+    // notification fails, so the next one already finds the connection paused
+    // rather than adding another refusal to the account's record.
+    if (failure.code === 'connection_restricted' || failure.code === 'new_chat_quota_exceeded') {
+      await this.connectionState.recordRefusal(session, failure.code);
+    }
+    if (isSessionLostByProvider(failure)) {
+      const refreshed = await this.connectionState.refreshStatus(session);
+
+      return this.waitForConnection(notification, refreshed, input);
+    }
     if (!isRetryable(failure)) {
       return this.fail(notification, failure, input, attemptNumber);
     }
@@ -380,6 +431,21 @@ export class DispatchNotificationService {
           `Delivery was attempted ${String(attemptNumber)} times without success. The last error was: ${failure.message}`,
         ),
         input,
+        attemptNumber,
+      );
+    }
+    if (failure.code === 'session_not_ready') {
+      // The connection dropped between the last status and this send. Retried
+      // on the normal curve, it spent the whole budget in minutes while the
+      // record still said WORKING; now the status is read again and the next
+      // try waits as long as any other disconnection does.
+      await this.connectionState.refreshStatus(session);
+
+      return this.retry(
+        notification,
+        failure,
+        input,
+        sessionNotReadyMinimumDelaySeconds,
         attemptNumber,
       );
     }
@@ -466,6 +532,11 @@ export class DispatchNotificationService {
     );
 
     if (resolved.outcome === 'failed') {
+      if (isSessionLostByProvider(resolved.failure)) {
+        const refreshed = await this.connectionState.refreshStatus(session);
+
+        return { result: await this.waitForConnection(notification, refreshed, input) };
+      }
       if (!isRetryable(resolved.failure)) {
         return { result: await this.fail(notification, resolved.failure, input) };
       }
@@ -502,6 +573,7 @@ export class DispatchNotificationService {
   private async beginAttempt(
     notification: NotificationRecord,
     claimToken: string,
+    recipientChatIdentifier: string,
   ): Promise<{ readonly attemptNumber: number } | undefined> {
     const now = this.clock.now();
 
@@ -510,6 +582,7 @@ export class DispatchNotificationService {
         applicationId: notification.applicationId,
         notificationId: notification.id,
         claimToken,
+        recipientChatIdentifier,
         now,
       });
 
@@ -628,6 +701,83 @@ export class DispatchNotificationService {
     return this.deferQuietly(notification, checkAgainAt, input, failure.code);
   }
 
+  /**
+   * Holds a notification while WhatsApp keeps the connection in a reachout
+   * timelock.
+   *
+   * Nothing is tried in the meantime: every message to a new contact would be
+   * refused, and refusals repeated through a timelock are what turn it into a
+   * ban. A notification that can wait out the pause within the same limit a
+   * disconnection gets waits, costing no attempt; one that cannot is failed
+   * now, saying until when, rather than sent hours late.
+   */
+  private async waitForPause(
+    notification: NotificationRecord,
+    pausedUntil: Date,
+    input: DispatchInput,
+  ): Promise<DispatchResult> {
+    const waitMinutes = this.configuration.delivery.maximumConnectionWaitMinutes;
+    const eligibleSince = (notification.scheduledAt ?? notification.createdAt).getTime();
+    const until = pausedUntil.toISOString();
+
+    if (pausedUntil.getTime() > eligibleSince + waitMinutes * 60_000) {
+      return this.fail(
+        notification,
+        createProviderFailure(
+          'connection_restricted',
+          `WhatsApp is restricting this number from messaging new contacts until ${until}, longer than a notification may wait (${String(waitMinutes)} minutes), so it was not sent.`,
+        ),
+        input,
+      );
+    }
+
+    const resumeAt = new Date(
+      pausedUntil.getTime() + this.random.integerBetween(0, PAUSE_RESUMPTION_SPREAD_SECONDS) * 1000,
+    );
+    const failure = createProviderFailure(
+      'connection_paused',
+      `WhatsApp is restricting this number from messaging new contacts until ${until}. The notification will be sent once it lifts.`,
+    );
+
+    // Written to the timeline once, as with a disconnection; every later check
+    // repeats the same fact quietly.
+    if (notification.failureCode !== failure.code) {
+      const secondsUntilResume = Math.ceil(
+        (resumeAt.getTime() - this.clock.now().getTime()) / 1000,
+      );
+
+      return this.retry(notification, failure, input, Math.max(secondsUntilResume, 0));
+    }
+    return this.deferQuietly(notification, resumeAt, input, failure.code);
+  }
+
+  /**
+   * Shows the recipient "typing…" for as long as a person would take to write
+   * the message, when that is configured. A courtesy, not a step: whether the
+   * indicator appeared says nothing about whether the message can be sent, so
+   * its outcome is not looked at.
+   */
+  private async showTyping(
+    notification: NotificationRecord,
+    session: WhatsAppSessionRecord,
+    chatIdentifier: string,
+    input: DispatchInput,
+  ): Promise<void> {
+    if (!this.configuration.whatsAppProvider.simulateTyping) {
+      return;
+    }
+
+    await this.provider.showTyping({
+      sessionName: session.providerSessionName,
+      chatIdentifier,
+      durationMilliseconds: computeTypingMilliseconds(
+        notification.renderedBody.length,
+        this.random,
+      ),
+      ...(input.abortSignal !== undefined && { abortSignal: input.abortSignal }),
+    });
+  }
+
   private async retry(
     notification: NotificationRecord,
     failure: ProviderFailure,
@@ -703,7 +853,7 @@ export class DispatchNotificationService {
     step: TransitionStep,
   ): Promise<void> {
     await this.connection.database.transaction(async (transaction) => {
-      await this.notifications.applyTransition(transaction, {
+      const transitioned = await this.notifications.applyTransition(transaction, {
         applicationId: notification.applicationId,
         notificationId: notification.id,
         expectedStatus: 'PROCESSING',
@@ -711,6 +861,13 @@ export class DispatchNotificationService {
         changes: step.changes,
         now: step.now,
       });
+
+      // Zero rows: the claim was reaped while this worker was still deciding,
+      // and the notification belongs to someone else now. Nothing happened to
+      // it here, so nothing is written about it, and no second job queued.
+      if (transitioned === undefined) {
+        return;
+      }
       await this.notifications.appendEvent(transaction, {
         id: this.identifiers.generate(),
         applicationId: notification.applicationId,
@@ -839,11 +996,21 @@ export class DispatchNotificationService {
       return this.waitForConnection(claimed, session, input);
     }
 
-    const slot = await this.whatsAppSessions.reserveSendSlot(session.id, this.clock.now());
+    // Before the pacing slot, so a paused connection spends no slot, and
+    // nothing at all reaches WhatsApp while it is paused.
+    const ready = await this.connectionState.prepareToSend(session);
+    if (
+      ready.sendingPausedUntil !== null &&
+      isSendingPaused(ready.sendingPausedUntil, this.clock.now())
+    ) {
+      return this.waitForPause(claimed, ready.sendingPausedUntil, input);
+    }
+
+    const slot = await this.whatsAppSessions.reserveSendSlot(ready.id, this.clock.now());
     if (!slot.reserved) {
       return this.deferQuietly(claimed, slot.nextSendAllowedAt, input, 'send_pacing');
     }
 
-    return this.deliver(claimed, session, claimToken, input);
+    return this.deliver(claimed, ready, claimToken, input);
   }
 }

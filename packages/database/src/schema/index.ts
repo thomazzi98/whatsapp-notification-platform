@@ -14,4 +14,4 @@ export { templates, type TemplateVariableDefinition } from './templates';
 export { userSessions } from './user-sessions';
 export { users } from './users';
 export { webhookDeliveries } from './webhook-deliveries';
-export { whatsAppSessions } from './whatsapp-sessions';
+export { type StoredAccountLimits, whatsAppSessions } from './whatsapp-sessions';

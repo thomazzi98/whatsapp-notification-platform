@@ -97,6 +97,10 @@ export const environmentSchema = z.object({
     description:
       'How long a dispatch claim may be held before it is treated as abandoned by a crashed worker.',
   }),
+  DELIVERY_RESTRICTION_FALLBACK_PAUSE_HOURS: positiveInteger.default(6).meta({
+    description:
+      'How long a WhatsApp connection stops sending after WhatsApp refuses a message for reaching out to new contacts without saying when the restriction ends. Sending through a restriction is what turns it into a ban.',
+  }),
 
   WAHA_BASE_URL: z.url().meta({
     description: 'Base URL of the WAHA instance, reachable on the internal Docker network.',
@@ -116,6 +120,10 @@ export const environmentSchema = z.object({
   WAHA_WEBHOOK_TOLERANCE_SECONDS: positiveInteger.default(300).meta({
     description:
       'How far a callback timestamp may be from now before it is refused as a replay. A signature never expires on its own.',
+  }),
+  WAHA_SIMULATE_TYPING: booleanFromString('true').meta({
+    description:
+      'Whether to show "typing..." to the recipient, for about as long as a person would take to write the message, before each send, as WAHA recommends.',
   }),
 
   SECURITY_API_KEY_PEPPER: base64Key(32).meta({

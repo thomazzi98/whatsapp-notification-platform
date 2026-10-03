@@ -30,6 +30,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { type Logger } from 'pino';
 
 import { DATABASE_CONNECTION, LOGGER } from '../tokens';
+import { ConnectionLimitsService } from '../whatsapp/connection-limits.service';
 
 export interface ProcessWebhookResult {
   readonly outcome: WebhookOutcome;
@@ -55,12 +56,14 @@ export class ProcessWebhookService {
   private readonly clock: ClockPort;
   private readonly identifiers: IdentifierGeneratorPort;
   private readonly logger: Logger;
+  private readonly connectionLimits: ConnectionLimitsService;
 
   public constructor(
     @Inject(DATABASE_CONNECTION) connection: DatabaseConnection,
     @Inject(CLOCK_PORT) clock: ClockPort,
     @Inject(IDENTIFIER_GENERATOR_PORT) identifiers: IdentifierGeneratorPort,
     @Inject(LOGGER) logger: Logger,
+    connectionLimits: ConnectionLimitsService,
   ) {
     this.connection = connection;
     this.deliveries = new WebhookDeliveryRepository(connection.database);
@@ -69,6 +72,7 @@ export class ProcessWebhookService {
     this.clock = clock;
     this.identifiers = identifiers;
     this.logger = logger;
+    this.connectionLimits = connectionLimits;
   }
 
   private async applySessionStatus(
@@ -82,6 +86,21 @@ export class ProcessWebhookService {
       lastError: null,
       now: this.clock.now(),
     });
+
+    // The earliest word of a restriction there is: the provider repeats the
+    // status the moment WhatsApp imposes one, while a refused message itself
+    // is usually reported only later, as a failed delivery.
+    if (event.accountLimits !== null) {
+      const session = await this.whatsAppSessions.findByIdWithoutTenantScope(
+        delivery.whatsAppSessionId,
+      );
+      if (session !== undefined) {
+        await this.connectionLimits.record(session, event.accountLimits, {
+          restrictionObserved: false,
+          cause: 'reported',
+        });
+      }
+    }
 
     // A connection dropping out of WORKING is the event an operator most needs
     // to see, and it was previously visible only by reading the table.
@@ -113,6 +132,14 @@ export class ProcessWebhookService {
   ): Promise<ProcessWebhookResult> {
     if (!event.fromUs) {
       return { outcome: 'IGNORED', detail: 'inbound message' };
+    }
+
+    if (isFailureAcknowledgement(event.acknowledgement)) {
+      // A refusal for the account's reach usually surfaces like this, as a
+      // delivery that failed after the send was accepted, rather than as an
+      // error on the send. That is reason enough to doubt the last report of
+      // the account's limits, so the next send asks WhatsApp again.
+      await this.connectionLimits.doubtReportedLimits(delivery.whatsAppSessionId);
     }
 
     const notification = await this.notifications.findByProviderMessageId(

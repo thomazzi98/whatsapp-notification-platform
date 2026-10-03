@@ -280,6 +280,16 @@ describe('sending messages', () => {
     expect(acknowledgement?.envelope.payload.id).not.toContain('5511999998888');
   });
 
+  it('does not know a session it never created, as the real server does not', async () => {
+    const sent = await call({
+      method: 'POST',
+      url: '/api/sendText',
+      payload: { session: 'forgotten', chatId: '5511999998888@c.us', text: 'Hello' },
+    });
+
+    expect(sent.statusCode).toBe(404);
+  });
+
   it('refuses to send while the session is not connected', async () => {
     await call({ method: 'POST', url: '/api/sessions', payload: { name: 'default', start: true } });
 

@@ -26,6 +26,7 @@ export interface DeliveryConfiguration {
   readonly maximumLifetimeHours: number;
   readonly maximumConnectionWaitMinutes: number;
   readonly stuckClaimTimeoutSeconds: number;
+  readonly restrictionFallbackPauseHours: number;
 }
 
 export interface WhatsAppProviderConfiguration {
@@ -34,6 +35,7 @@ export interface WhatsAppProviderConfiguration {
   readonly requestTimeoutMilliseconds: number;
   readonly webhookPublicUrl: string;
   readonly webhookToleranceSeconds: number;
+  readonly simulateTyping: boolean;
 }
 
 export interface SecurityConfiguration {
@@ -96,6 +98,7 @@ export function toApplicationConfiguration(
       maximumLifetimeHours: environment.DELIVERY_MAXIMUM_LIFETIME_HOURS,
       maximumConnectionWaitMinutes: environment.DELIVERY_MAXIMUM_CONNECTION_WAIT_MINUTES,
       stuckClaimTimeoutSeconds: environment.DELIVERY_STUCK_CLAIM_TIMEOUT_SECONDS,
+      restrictionFallbackPauseHours: environment.DELIVERY_RESTRICTION_FALLBACK_PAUSE_HOURS,
     },
     whatsAppProvider: {
       baseUrl: environment.WAHA_BASE_URL,
@@ -103,6 +106,7 @@ export function toApplicationConfiguration(
       requestTimeoutMilliseconds: environment.WAHA_REQUEST_TIMEOUT_MILLISECONDS,
       webhookPublicUrl: environment.WAHA_WEBHOOK_PUBLIC_URL,
       webhookToleranceSeconds: environment.WAHA_WEBHOOK_TOLERANCE_SECONDS,
+      simulateTyping: environment.WAHA_SIMULATE_TYPING,
     },
     security: {
       apiKeyPepper: environment.SECURITY_API_KEY_PEPPER,
