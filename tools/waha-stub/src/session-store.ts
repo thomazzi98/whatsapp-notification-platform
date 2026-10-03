@@ -14,6 +14,25 @@ export interface WebhookConfiguration {
   readonly hmac?: { readonly key?: string };
 }
 
+/** WAHA's ReachoutTimelockData, as `GET /api/sessions/:session/timelock` returns it. */
+export interface StubReachoutTimelock {
+  enforcementType: string;
+  isActive: boolean;
+  /** Unix seconds. */
+  timeEnforcementEnds: number | null;
+}
+
+/** WAHA's MessageCappingData, as `GET /api/sessions/:session/capping` returns it. */
+export interface StubMessageCapping {
+  cappingStatus: string;
+  totalQuota: number;
+  usedQuota: number;
+  cycleStart: number | null;
+  cycleEnd: number | null;
+  mvStatus: string | null;
+  oteStatus: string | null;
+}
+
 export interface StubSession {
   name: string;
   status: SessionStatus;
@@ -24,8 +43,20 @@ export interface StubSession {
   qrExpiresAt: number | null;
   webhooks: WebhookConfiguration[];
   failureReason: string | null;
+  /**
+   * What WhatsApp enforces on the account. Neither is touched by logging out
+   * or pairing again, exactly as with the real account: the restriction
+   * belongs to the number, not to the session.
+   */
+  reachoutTimelock: StubReachoutTimelock;
+  messageCapping: StubMessageCapping;
 }
 
+/**
+ * The NOWEB engine's budget. WEBJS refreshes its code indefinitely, but the
+ * stub keeps the budget because it is what exercises the adapter's recovery
+ * from a session that failed on expired codes.
+ */
 export const MAXIMUM_QR_ATTEMPTS = 6;
 export const FIRST_QR_LIFETIME_MILLISECONDS = 60_000;
 export const SUBSEQUENT_QR_LIFETIME_MILLISECONDS = 20_000;
@@ -55,6 +86,16 @@ export class SessionStore {
       qrExpiresAt: null,
       webhooks,
       failureReason: null,
+      reachoutTimelock: { enforcementType: 'DEFAULT', isActive: false, timeEnforcementEnds: null },
+      messageCapping: {
+        cappingStatus: 'NONE',
+        totalQuota: -1,
+        usedQuota: 0,
+        cycleStart: null,
+        cycleEnd: null,
+        mvStatus: null,
+        oteStatus: null,
+      },
     };
     this.sessions.set(name, session);
 

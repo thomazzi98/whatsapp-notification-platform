@@ -1,4 +1,7 @@
+import { setTimeout as delay } from 'node:timers/promises';
+
 import {
+  type AccountLimits,
   createProviderFailure,
   type CreateSessionInput,
   failed,
@@ -10,19 +13,31 @@ import {
   type ResolvedRecipient,
   type SendTextMessageInput,
   type SentMessage,
+  type ShowTypingInput,
   succeeded,
   toProviderSessionStatus,
   type WhatsAppProviderPort,
 } from '@platform/domain';
 import { z } from 'zod';
 
+import { readAccountLimits, readNewChatQuota, readReachoutTimelock } from './account-limits';
 import { classifyHttpStatus, classifyTransportError } from './classify-failure';
 
 export interface WahaProviderOptions {
   readonly baseUrl: string;
   readonly apiKey: string;
   readonly requestTimeoutMilliseconds: number;
-  /** Events the platform subscribes to when it creates a session. */
+  /** Waits out the typing indicator. Injected so a test need not wait for real. */
+  readonly sleep?: (milliseconds: number, abortSignal?: AbortSignal) => Promise<void>;
+}
+
+/** Ends early when aborted, which is all an abort means for a wait. */
+async function sleepUnlessAborted(milliseconds: number, abortSignal?: AbortSignal): Promise<void> {
+  try {
+    await delay(milliseconds, undefined, abortSignal === undefined ? {} : { signal: abortSignal });
+  } catch {
+    // Aborted: the wait is over, and nothing else depended on it.
+  }
 }
 
 const DEFAULT_WEBHOOK_EVENTS = ['session.status', 'message.ack', 'state.change'] as const;
@@ -30,7 +45,16 @@ const DEFAULT_WEBHOOK_EVENTS = ['session.status', 'message.ack', 'state.change']
 const sessionResponseSchema = z.object({
   name: z.string(),
   status: z.string(),
-  me: z.object({ id: z.string().optional(), pushName: z.string().nullable().optional() }).nullish(),
+  me: z
+    .object({
+      id: z.string().optional(),
+      pushName: z.string().nullable().optional(),
+      // What the engine last heard from WhatsApp about the account's limits,
+      // read by readAccountLimits rather than here.
+      reachoutTimelock: z.unknown().optional(),
+      messageCapping: z.unknown().optional(),
+    })
+    .nullish(),
 });
 
 const qrCodeResponseSchema = z.object({
@@ -84,9 +108,11 @@ function toPhoneNumber(providerIdentifier: string | undefined): string | null {
 
 export class WahaProvider implements WhatsAppProviderPort {
   private readonly options: WahaProviderOptions;
+  private readonly sleep: (milliseconds: number, abortSignal?: AbortSignal) => Promise<void>;
 
   public constructor(options: WahaProviderOptions) {
     this.options = options;
+    this.sleep = options.sleep ?? sleepUnlessAborted;
   }
 
   private async requestSession(options: RequestOptions): Promise<ProviderResult<ProviderSession>> {
@@ -107,11 +133,15 @@ export class WahaProvider implements WhatsAppProviderPort {
       );
     }
 
+    const me = parsed.data.me;
+
     return succeeded({
       name: parsed.data.name,
       status: toProviderSessionStatus(parsed.data.status),
-      phoneNumber: toPhoneNumber(parsed.data.me?.id),
-      pushName: parsed.data.me?.pushName ?? null,
+      phoneNumber: toPhoneNumber(me?.id),
+      pushName: me?.pushName ?? null,
+      // An unpaired session has no account, and so nothing to report about it.
+      accountLimits: me === null || me === undefined ? null : readAccountLimits(me),
     });
   }
 
@@ -308,6 +338,62 @@ export class WahaProvider implements WhatsAppProviderPort {
     });
   }
 
+  /**
+   * Both lookups ask WhatsApp afresh. An engine whose WhatsApp Web build cannot
+   * read one of them answers 501 for it, which leaves that half unknown rather
+   * than failing the other; only when neither answers is the lookup a failure.
+   */
+  public async fetchAccountLimits(sessionName: string): Promise<ProviderResult<AccountLimits>> {
+    const path = `/api/sessions/${encodeURIComponent(sessionName)}`;
+    const timelock = await this.request({ method: 'GET', path: `${path}/timelock` });
+    const capping = await this.request({ method: 'GET', path: `${path}/capping` });
+
+    if (timelock.outcome === 'failed' && capping.outcome === 'failed') {
+      return failed(timelock.failure);
+    }
+
+    return succeeded({
+      reachoutTimelock:
+        timelock.outcome === 'succeeded' ? readReachoutTimelock(timelock.value) : null,
+      newChatQuota: capping.outcome === 'succeeded' ? readNewChatQuota(capping.value) : null,
+    });
+  }
+
+  /**
+   * The sequence WAHA recommends before a message: mark the chat seen, show
+   * typing for as long as the text would take to write, then stop.
+   *
+   * Seen is best effort and ignored when it fails: a chat with nothing unread,
+   * or one WhatsApp Web has not loaded yet, has nothing to mark. Typing that
+   * cannot start is reported, and the wait is skipped, because there is no
+   * indicator to keep up. Stopping is attempted even after an abort, so a
+   * worker that is shutting down does not leave "typing…" on someone's screen.
+   */
+  public async showTyping(input: ShowTypingInput): Promise<ProviderResult<void>> {
+    const chat = { session: input.sessionName, chatId: input.chatIdentifier };
+    const abort = input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal };
+
+    await this.request({ method: 'POST', path: '/api/sendSeen', body: chat, ...abort });
+
+    const started = await this.request({
+      method: 'POST',
+      path: '/api/startTyping',
+      body: chat,
+      ...abort,
+    });
+    if (started.outcome === 'failed') {
+      return failed(started.failure);
+    }
+
+    await this.sleep(input.durationMilliseconds, input.abortSignal);
+
+    const stopped = await this.request({ method: 'POST', path: '/api/stopTyping', body: chat });
+    if (stopped.outcome === 'failed') {
+      return failed(stopped.failure);
+    }
+    return succeeded(undefined);
+  }
+
   public async sendTextMessage(input: SendTextMessageInput): Promise<ProviderResult<SentMessage>> {
     const response = await this.request({
       method: 'POST',
@@ -341,11 +427,63 @@ export class WahaProvider implements WhatsAppProviderPort {
   }
 }
 
+/** Validation failures carry a list of messages rather than one. */
+const errorTextSchema = z.union([
+  z.string().min(1),
+  z.array(z.string()).transform((messages) => messages.join('; ')),
+]);
+
+const errorBodySchema = z.object({
+  exception: z.object({ message: errorTextSchema }).optional(),
+  message: errorTextSchema.optional(),
+});
+
+/** Anything that names a chat or an account, in any of WhatsApp's address forms. */
+const CHAT_ADDRESS_PATTERN =
+  /[\w.-]*\d[\w.-]*@(?:c\.us|s\.whatsapp\.net|lid|g\.us|newsletter|broadcast)/g;
+
+const MAXIMUM_ERROR_MESSAGE_LENGTH = 200;
+
+/**
+ * The provider's own account of what went wrong, and nothing else.
+ *
+ * WAHA answers an engine failure with the error, its stack, and the request
+ * that caused it echoed back — chat identifier and message text included —
+ * and the failure message ends up in the reason the public API returns. Only
+ * the error's message is kept, with any chat address in it masked.
+ */
 async function readErrorMessage(response: Response): Promise<string> {
   try {
     const text = await response.text();
-    return text.length === 0 ? response.statusText : text.slice(0, 500);
+    if (text.length === 0) {
+      return response.statusText;
+    }
+    return toSafeErrorMessage(text) ?? response.statusText;
   } catch {
     return response.statusText;
+  }
+}
+
+function toSafeErrorMessage(text: string): string | undefined {
+  const message = readMessage(text);
+  if (message === undefined) {
+    return undefined;
+  }
+
+  const safe = message.replaceAll(CHAT_ADDRESS_PATTERN, 'a chat').replaceAll(/\s+/g, ' ').trim();
+  return safe.length === 0 ? undefined : safe.slice(0, MAXIMUM_ERROR_MESSAGE_LENGTH);
+}
+
+/**
+ * A JSON body yields its message field or nothing: whatever else it holds is
+ * the echo this exists to drop. Anything that is not JSON — a proxy's error
+ * page, plain text — is used as it came, masked like the rest.
+ */
+function readMessage(text: string): string | undefined {
+  try {
+    const parsed = errorBodySchema.safeParse(JSON.parse(text));
+    return parsed.success ? (parsed.data.exception?.message ?? parsed.data.message) : undefined;
+  } catch {
+    return text;
   }
 }

@@ -53,6 +53,21 @@ async function forceFailureMode(mode: string): Promise<void> {
   });
 }
 
+async function controlStub(path: string, body: unknown): Promise<void> {
+  await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function readChatActivity(): Promise<{ action: string; chatId: string }[]> {
+  const response = await fetch(`${baseUrl}/__stub/state`);
+  const state = (await response.json()) as { chatActivity: { action: string; chatId: string }[] };
+
+  return state.chatActivity;
+}
+
 async function createConnectedSession(sessionName = 'default'): Promise<void> {
   await provider.createSession({
     sessionName,
@@ -250,7 +265,7 @@ describe('recipient resolution', () => {
 });
 
 describe('sending', () => {
-  it('reads the identifier out of the key the engine answers with', async () => {
+  it('reads the identifier out of the message the WEBJS engine answers with', async () => {
     await createConnectedSession();
 
     const result = await provider.sendTextMessage({
@@ -265,6 +280,22 @@ describe('sending', () => {
       // serialize it against a different address, so only this part matches.
       expect(result.value.providerMessageId).toMatch(/^STUB\d{6}$/);
     }
+  });
+
+  it('still reads the key the NOWEB engine answers with', async () => {
+    await createConnectedSession();
+    await controlStub('/__stub/engine', { engine: 'NOWEB' });
+
+    const result = await provider.sendTextMessage({
+      sessionName: 'default',
+      chatIdentifier: '5511999998888@c.us',
+      text: 'Your order has shipped.',
+    });
+
+    expect(result).toMatchObject({
+      outcome: 'succeeded',
+      value: { providerMessageId: expect.stringMatching(/^STUB\d{6}$/) as unknown },
+    });
   });
 
   it('stores the identifier an acknowledgement will report', async () => {
@@ -324,6 +355,159 @@ describe('sending', () => {
   });
 });
 
+describe('the limits WhatsApp places on the account', () => {
+  it('reports nothing in force on an account nothing has happened to', async () => {
+    await createConnectedSession();
+
+    const session = await provider.getSession('default');
+
+    expect(session).toMatchObject({
+      outcome: 'succeeded',
+      value: { accountLimits: { reachoutTimelock: null, newChatQuota: null } },
+    });
+  });
+
+  it('reads the limits the session reports, without asking WhatsApp again', async () => {
+    await createConnectedSession();
+    await controlStub('/__stub/sessions/default/restrict', {
+      timelockMinutes: 90,
+      cappingStatus: 'SECOND_WARNING',
+      usedQuota: 95,
+      totalQuota: 100,
+    });
+
+    const session = await provider.getSession('default');
+
+    expect(session.outcome).toBe('succeeded');
+    if (session.outcome === 'succeeded') {
+      const limits = session.value?.accountLimits;
+      expect(limits?.reachoutTimelock?.isActive).toBe(true);
+      expect(limits?.reachoutTimelock?.endsAt?.getTime()).toBeGreaterThan(Date.now());
+      expect(limits?.newChatQuota).toMatchObject({
+        status: 'SECOND_WARNING',
+        used: 95,
+        total: 100,
+      });
+    }
+  });
+
+  it('has no limits to report for a session nobody has paired', async () => {
+    await provider.createSession({
+      sessionName: 'default',
+      webhookUrl: unreachableReceiver,
+      webhookSigningKey: 'a-signing-key',
+      start: true,
+    });
+
+    const session = await provider.getSession('default');
+
+    expect(session).toMatchObject({ outcome: 'succeeded', value: { accountLimits: null } });
+  });
+
+  it('asks WhatsApp afresh when told to', async () => {
+    await createConnectedSession();
+    await controlStub('/__stub/sessions/default/restrict', { timelockMinutes: 30 });
+
+    const limits = await provider.fetchAccountLimits('default');
+
+    expect(limits).toMatchObject({
+      outcome: 'succeeded',
+      value: {
+        reachoutTimelock: { isActive: true, enforcementType: 'DEFAULT' },
+        newChatQuota: { status: 'NONE', total: -1 },
+      },
+    });
+  });
+
+  it('fails the fresh lookup only when neither half can be read', async () => {
+    await createConnectedSession();
+    await controlStub('/__stub/sessions/default/restrict', { lookupUnavailable: true });
+
+    const limits = await provider.fetchAccountLimits('default');
+
+    expect(limits.outcome).toBe('failed');
+  });
+});
+
+describe('typing before a message', () => {
+  it('marks the chat seen, shows typing for the time asked, then stops', async () => {
+    await createConnectedSession();
+    const waits: number[] = [];
+    const typingProvider = new WahaProvider({
+      baseUrl,
+      apiKey,
+      requestTimeoutMilliseconds: 2000,
+      sleep: async (milliseconds) => {
+        waits.push(milliseconds);
+        await Promise.resolve();
+      },
+    });
+
+    const result = await typingProvider.showTyping({
+      sessionName: 'default',
+      chatIdentifier: '5511999998888@c.us',
+      durationMilliseconds: 3500,
+    });
+
+    expect(result.outcome).toBe('succeeded');
+    expect(waits).toStrictEqual([3500]);
+    const activity = await readChatActivity();
+
+    expect(activity.map((entry) => entry.action)).toStrictEqual([
+      'seen',
+      'typing_started',
+      'typing_stopped',
+    ]);
+  });
+
+  it('skips the wait when typing cannot start', async () => {
+    // A session that is not connected, the way a chat WhatsApp Web has not
+    // loaded refuses: there is no indicator to keep up, so nothing waits.
+    await provider.createSession({
+      sessionName: 'default',
+      webhookUrl: unreachableReceiver,
+      webhookSigningKey: 'a-signing-key',
+      start: true,
+    });
+    const waits: number[] = [];
+    const typingProvider = new WahaProvider({
+      baseUrl,
+      apiKey,
+      requestTimeoutMilliseconds: 2000,
+      sleep: async (milliseconds) => {
+        waits.push(milliseconds);
+        await Promise.resolve();
+      },
+    });
+
+    const result = await typingProvider.showTyping({
+      sessionName: 'default',
+      chatIdentifier: '5511999998888@c.us',
+      durationMilliseconds: 3500,
+    });
+
+    expect(result.outcome).toBe('failed');
+    expect(waits).toStrictEqual([]);
+  });
+
+  it('cuts the wait short when the worker is shutting down', async () => {
+    await createConnectedSession();
+    const controller = new AbortController();
+    controller.abort();
+
+    const startedAt = Date.now();
+    const result = await provider.showTyping({
+      sessionName: 'default',
+      chatIdentifier: '5511999998888@c.us',
+      durationMilliseconds: 10_000,
+      abortSignal: controller.signal,
+    });
+
+    expect(Date.now() - startedAt).toBeLessThan(5000);
+    expect(result.outcome).toBe('failed');
+  });
+});
+
 describe('failure classification against a real server', () => {
   const cases = [
     { recipient: '5511999990500@c.us', code: 'provider_server_error', classification: 'RETRYABLE' },
@@ -336,6 +520,16 @@ describe('failure classification against a real server', () => {
     {
       recipient: '5511999990422@c.us',
       code: 'provider_invalid_request',
+      classification: 'PERMANENT',
+    },
+    {
+      recipient: '5511999990463@c.us',
+      code: 'connection_restricted',
+      classification: 'PERMANENT',
+    },
+    {
+      recipient: '5511999990475@c.us',
+      code: 'new_chat_quota_exceeded',
       classification: 'PERMANENT',
     },
   ] as const;
@@ -357,6 +551,25 @@ describe('failure classification against a real server', () => {
       }
     });
   }
+
+  it('keeps the engine stack and the echoed request out of the failure message', async () => {
+    // The real server answers an engine error with its stack and the request
+    // that caused it, chat and text included, and the message reaches the
+    // reason the public API returns.
+    await createConnectedSession();
+    await forceFailureMode('none');
+
+    const refused = await provider.sendTextMessage({
+      sessionName: 'default',
+      chatIdentifier: '5511999990463@c.us',
+      text: 'Hello',
+    });
+
+    expect(refused.outcome).toBe('failed');
+    if (refused.outcome === 'failed') {
+      expect(refused.failure.message).not.toMatch(/@c\.us|webjs|The message text|stack/i);
+    }
+  });
 
   it('classifies a connection dropped mid-request as an unknown outcome', async () => {
     await createConnectedSession();

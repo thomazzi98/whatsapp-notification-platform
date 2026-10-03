@@ -41,6 +41,17 @@ export {
   type RetryPolicy,
   sessionNotReadyMinimumDelaySeconds,
 } from './notification/retry-policy';
+export {
+  type AccountLimits,
+  isNewChatQuotaUnderPressure,
+  isSendingPaused,
+  type NewChatQuota,
+  type ReachoutTimelock,
+  resolveSendingPause,
+  type SendingPause,
+  type SendingPauseReason,
+  sendingPauseReasons,
+} from './provider/account-limits';
 export { type ProviderEvent, toDeliveryAcknowledgement } from './provider/provider-event';
 export { normalizeProviderMessageId } from './provider/provider-message-id';
 export {
@@ -57,11 +68,17 @@ export {
   type ResolvedRecipient,
   type SendTextMessageInput,
   type SentMessage,
+  type ShowTypingInput,
   succeeded,
   toProviderSessionStatus,
   WHATSAPP_PROVIDER_PORT,
   type WhatsAppProviderPort,
 } from './provider/whatsapp-provider.port';
+export {
+  computeTypingMilliseconds,
+  maximumTypingMilliseconds,
+  minimumTypingMilliseconds,
+} from './provider/typing-duration';
 export { CLOCK_PORT, type ClockPort } from './ports/clock';
 export {
   IDENTIFIER_GENERATOR_PORT,
