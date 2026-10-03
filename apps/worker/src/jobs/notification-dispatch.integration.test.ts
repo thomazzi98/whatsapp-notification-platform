@@ -40,6 +40,8 @@ const recipients = {
   timeout: '+5511999990408',
   connectionReset: '+5511999990499',
   notOnWhatsApp: '+5511999990404',
+  reachoutRefused: '+5511999990463',
+  quotaRefused: '+5511999990475',
 } as const;
 
 const apiKey = 'worker-integration-stub-key';
@@ -62,6 +64,7 @@ async function buildContext(overrides: Partial<ApplicationConfiguration> = {}): 
       requestTimeoutMilliseconds: 1500,
       webhookPublicUrl: 'http://api.invalid:3000',
       webhookToleranceSeconds: 300,
+      simulateTyping: false,
     },
     ...overrides,
   });
@@ -119,6 +122,7 @@ async function createConnectedTenant(
     readonly unknownOutcomePolicy?: 'RETRY' | 'FAIL_CLOSED';
     readonly sessionStatus?: string;
     readonly pacingSeconds?: number;
+    readonly sendingPausedUntil?: Date;
   } = {},
 ): Promise<Fixture> {
   sessionCounter += 1;
@@ -136,6 +140,9 @@ async function createConnectedTenant(
       ...(options.pacingSeconds !== undefined && {
         sendPacingMinimumSeconds: options.pacingSeconds,
         sendPacingMaximumSeconds: options.pacingSeconds,
+      }),
+      ...(options.sendingPausedUntil !== undefined && {
+        sendingPausedUntil: options.sendingPausedUntil,
       }),
     },
   );
@@ -200,6 +207,47 @@ async function waitUntilSendInFlight(notificationId: string): Promise<void> {
   throw new Error('The dispatcher never started a send attempt.');
 }
 
+type WhatsAppSession = NonNullable<Awaited<ReturnType<TestDatabaseHandle['readWhatsAppSession']>>>;
+
+interface StubState {
+  readonly sentMessageCount: number;
+  readonly recipientLookupCount: number;
+  readonly chatActivity: readonly { readonly action: string; readonly chatId: string }[];
+}
+
+async function readStubState(): Promise<StubState> {
+  const response = await fetch(`${stubBaseUrl}/__stub/state`);
+
+  return (await response.json()) as StubState;
+}
+
+async function countSentMessages(): Promise<number> {
+  const state = await readStubState();
+
+  return state.sentMessageCount;
+}
+
+async function controlStub(path: string, body: unknown): Promise<void> {
+  await fetch(`${stubBaseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function callProvider(method: 'POST' | 'DELETE', path: string): Promise<void> {
+  await fetch(`${stubBaseUrl}${path}`, { method, headers: { 'x-api-key': apiKey } });
+}
+
+async function readSession(fixture: Fixture): Promise<WhatsAppSession> {
+  const session = await database.readWhatsAppSession(fixture.whatsAppSessionId);
+
+  if (session === undefined) {
+    throw new Error(`The test connection ${fixture.whatsAppSessionId} disappeared.`);
+  }
+  return session;
+}
+
 async function queueNotification(
   fixture: Fixture,
   overrides: NotificationOverrides = {},
@@ -257,6 +305,7 @@ describe('delivering a notification', () => {
         requestTimeoutMilliseconds: 15_000,
         webhookPublicUrl: 'http://api.invalid:3000',
         webhookToleranceSeconds: 300,
+        simulateTyping: false,
       },
     });
     await fetch(`${stubBaseUrl}/__stub/send-delay`, {
@@ -827,4 +876,231 @@ describe('maintenance', () => {
     expect(report.requeuedNotifications).toBe(1);
     expect(await database.countDispatchJobs(notificationId)).toBe(1);
   });
+});
+
+describe('a number WhatsApp is restricting', () => {
+  it('holds a notification until the restriction lifts, spending no attempt', async () => {
+    const pausedUntil = new Date(Date.now() + 20 * 60_000);
+    const fixture = await createConnectedTenant({ sendingPausedUntil: pausedUntil });
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const result = await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+
+    expect(result).toMatchObject({ outcome: 'retry_scheduled', detail: 'connection_paused' });
+    expect(notification.status).toBe('RETRYING');
+    expect(notification.attemptCount).toBe(0);
+    expect(notification.nextAttemptAt?.getTime()).toBeGreaterThanOrEqual(pausedUntil.getTime());
+    // Nothing reached WhatsApp: not the send, and not the number lookup either.
+    const stub = await readStubState();
+    expect(stub.sentMessageCount).toBe(0);
+    expect(stub.recipientLookupCount).toBe(0);
+  });
+
+  it('records the hold once, however many times it checks again', async () => {
+    const fixture = await createConnectedTenant({
+      sendingPausedUntil: new Date(Date.now() + 20 * 60_000),
+    });
+    // Where an earlier check left it: held, and due to look again.
+    const notificationId = await queueNotification(fixture, {
+      recipient: recipients.healthy,
+      status: 'RETRYING',
+      failureCode: 'connection_paused',
+      nextAttemptAt: new Date(Date.now() - 1000),
+    });
+
+    const result = await dispatch(fixture, notificationId);
+
+    expect(result).toMatchObject({ outcome: 'deferred', detail: 'connection_paused' });
+    expect(await database.listEventTypes(notificationId)).toStrictEqual([]);
+  });
+
+  it('fails a notification the restriction outlasts, rather than sending it late', async () => {
+    const fixture = await createConnectedTenant({
+      sendingPausedUntil: new Date(Date.now() + 3 * 3_600_000),
+    });
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const result = await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+
+    expect(result).toMatchObject({ outcome: 'failed', detail: 'connection_restricted' });
+    expect(notification.attemptCount).toBe(0);
+    expect(await countSentMessages()).toBe(0);
+  });
+
+  it('pauses the number when WhatsApp refuses a message for reaching out', async () => {
+    // No pacing, so what holds the next notification back is the pause alone.
+    const fixture = await createConnectedTenant({ pacingSeconds: 0 });
+    const refused = await queueNotification(fixture, { recipient: recipients.reachoutRefused });
+
+    const result = await dispatch(fixture, refused);
+    const notification = await database.readNotification(refused);
+    const session = await readSession(fixture);
+
+    // Never retried: trying again through a timelock is what turns it into a ban.
+    expect(result).toMatchObject({ outcome: 'failed', detail: 'connection_restricted' });
+    expect(notification?.failureClassification).toBe('PERMANENT');
+    expect(session.sendingPausedReason).toBe('REACHOUT_TIMELOCK');
+    expect(session.sendingPausedUntil?.getTime()).toBeGreaterThan(Date.now());
+
+    // The next notification finds the number paused and goes nowhere near it.
+    const next = await queueNotification(fixture, { recipient: recipients.healthy });
+    const nextResult = await dispatch(fixture, next);
+
+    expect(['connection_paused', 'connection_restricted']).toContain(nextResult.detail);
+    expect(await countSentMessages()).toBe(0);
+  });
+
+  it('explains a refusal without repeating what the provider echoed back', async () => {
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, {
+      recipient: recipients.reachoutRefused,
+    });
+
+    await dispatch(fixture, notificationId);
+    const events = await database.listEventTypes(notificationId);
+    const result = await database.readNotification(notificationId);
+
+    expect(events).toContain('notification.failed');
+    expect(result?.failureCode).toBe('connection_restricted');
+  });
+
+  it('does not pause the number when only the quota of new chats is used up', async () => {
+    const fixture = await createConnectedTenant({ pacingSeconds: 0 });
+    const refused = await queueNotification(fixture, { recipient: recipients.quotaRefused });
+
+    const result = await dispatch(fixture, refused);
+    const session = await readSession(fixture);
+
+    expect(result).toMatchObject({ outcome: 'failed', detail: 'new_chat_quota_exceeded' });
+    expect(session.sendingPausedUntil).toBeNull();
+    expect(session.accountLimits).toMatchObject({ newChatQuota: { status: 'CAPPED' } });
+
+    // People who already talk to the number still receive.
+    const next = await queueNotification(fixture, { recipient: recipients.healthy });
+    const nextResult = await dispatch(fixture, next);
+    expect(nextResult.outcome).toBe('sent');
+  });
+
+  it('pauses the number once WhatsApp reports a timelock, before anything is refused', async () => {
+    const fixture = await createConnectedTenant();
+    await controlStub(`/__stub/sessions/${fixture.providerSessionName}/restrict`, {
+      timelockMinutes: 30,
+    });
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const result = await dispatch(fixture, notificationId);
+
+    const session = await readSession(fixture);
+
+    expect(result).toMatchObject({ outcome: 'retry_scheduled', detail: 'connection_paused' });
+    expect(session.sendingPausedReason).toBe('REACHOUT_TIMELOCK');
+    expect(await countSentMessages()).toBe(0);
+  });
+
+  it('keeps sending when WhatsApp cannot say what the limits are', async () => {
+    const fixture = await createConnectedTenant();
+    await controlStub(`/__stub/sessions/${fixture.providerSessionName}/restrict`, {
+      lookupUnavailable: true,
+    });
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const result = await dispatch(fixture, notificationId);
+
+    expect(result.outcome).toBe('sent');
+  });
+
+  it('sends again once a pause has run out and WhatsApp confirms it lifted', async () => {
+    const fixture = await createConnectedTenant({
+      sendingPausedUntil: new Date(Date.now() - 1000),
+    });
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const result = await dispatch(fixture, notificationId);
+
+    const session = await readSession(fixture);
+
+    expect(result.outcome).toBe('sent');
+    expect(session.sendingPausedUntil).toBeNull();
+  });
+});
+
+describe('a connection that drops while sending', () => {
+  it('waits for a connection that dropped, rather than spending the budget', async () => {
+    const fixture = await createConnectedTenant();
+    // WhatsApp dropped it after the last status the platform saw.
+    await callProvider('POST', `/api/sessions/${fixture.providerSessionName}/stop`);
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const before = Date.now();
+    const result = await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+
+    expect(result).toMatchObject({ outcome: 'retry_scheduled', detail: 'session_not_ready' });
+    const session = await readSession(fixture);
+
+    expect(notification.nextAttemptAt?.getTime()).toBeGreaterThanOrEqual(before + 300_000);
+    expect(session.status).toBe('STOPPED');
+  });
+
+  it('waits for a connection the provider no longer has, instead of failing for good', async () => {
+    const fixture = await createConnectedTenant();
+    // The provider forgot the session: a wiped volume, or a change of engine.
+    await callProvider('DELETE', `/api/sessions/${fixture.providerSessionName}`);
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const result = await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+    const session = await readSession(fixture);
+
+    expect(result.outcome).toBe('retry_scheduled');
+    expect(notification.status).toBe('RETRYING');
+    expect(session.status).toBe('STOPPED');
+    expect(session.lastError).toContain('no longer has this connection');
+  });
+});
+
+describe('the recipient lookup', () => {
+  it('keeps the chat it resolved after a failed attempt, so a retry does not ask again', async () => {
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, { recipient: recipients.serverError });
+
+    await dispatch(fixture, notificationId);
+    const notification = await readNotification(notificationId);
+
+    expect(notification.status).toBe('RETRYING');
+    expect(notification.recipientChatIdentifier).toBe('5511999990500@c.us');
+    const stub = await readStubState();
+    expect(stub.recipientLookupCount).toBe(1);
+  });
+});
+
+describe('typing before a message', () => {
+  it('marks the chat seen and shows typing before the message goes out', async () => {
+    await buildContext({
+      whatsAppProvider: {
+        baseUrl: stubBaseUrl,
+        apiKey,
+        requestTimeoutMilliseconds: 15_000,
+        webhookPublicUrl: 'http://api.invalid:3000',
+        webhookToleranceSeconds: 300,
+        simulateTyping: true,
+      },
+    });
+    const fixture = await createConnectedTenant();
+    const notificationId = await queueNotification(fixture, { recipient: recipients.healthy });
+
+    const result = await dispatch(fixture, notificationId);
+    await buildContext();
+
+    expect(result.outcome).toBe('sent');
+    const activity = await readStubState();
+    expect(activity.chatActivity.map((entry) => entry.action)).toStrictEqual([
+      'seen',
+      'typing_started',
+      'typing_stopped',
+      'sent',
+    ]);
+  }, 30_000);
 });

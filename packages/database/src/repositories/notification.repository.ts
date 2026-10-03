@@ -404,12 +404,21 @@ export class NotificationRepository {
       readonly applicationId: string;
       readonly notificationId: string;
       readonly claimToken: string;
+      /**
+       * Saved with the attempt, under the same claim, so a retry sends to the
+       * chat already resolved instead of asking WhatsApp about the number again.
+       */
+      readonly recipientChatIdentifier: string;
       readonly now: Date;
     },
   ): Promise<number | undefined> {
     const [updated] = await executor
       .update(notifications)
-      .set({ attemptCount: sql`${notifications.attemptCount} + 1`, updatedAt: input.now })
+      .set({
+        attemptCount: sql`${notifications.attemptCount} + 1`,
+        recipientChatIdentifier: input.recipientChatIdentifier,
+        updatedAt: input.now,
+      })
       .where(
         and(
           eq(notifications.id, input.notificationId),

@@ -4,6 +4,7 @@ import {
   customType,
   index,
   integer,
+  jsonb,
   pgTable,
   smallint,
   text,
@@ -18,6 +19,24 @@ import { createdAtColumn, timestampColumn, updatedAtColumn } from './columns';
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => 'bytea',
 });
+
+/**
+ * The last report of what WhatsApp enforces on the account, kept for the
+ * dashboard. Instants are ISO strings because that is what JSON holds.
+ */
+export interface StoredAccountLimits {
+  readonly reachoutTimelock: {
+    readonly isActive: boolean;
+    readonly endsAt: string | null;
+    readonly enforcementType: string | null;
+  } | null;
+  readonly newChatQuota: {
+    readonly status: string;
+    readonly total: number;
+    readonly used: number;
+    readonly cycleEndsAt: string | null;
+  } | null;
+}
 
 export const whatsAppSessions = pgTable(
   'whatsapp_sessions',
@@ -42,6 +61,16 @@ export const whatsAppSessions = pgTable(
     sendPacingMinimumSeconds: integer('send_pacing_minimum_seconds').notNull().default(30),
     sendPacingMaximumSeconds: integer('send_pacing_maximum_seconds').notNull().default(60),
     nextSendAllowedAt: timestampColumn('next_send_allowed_at').notNull().defaultNow(),
+    // While WhatsApp holds the account in a reachout timelock, nothing is sent
+    // from it: every message to a new contact is refused, and refusals repeated
+    // through a timelock are what turn it into a ban.
+    sendingPausedUntil: timestampColumn('sending_paused_until'),
+    sendingPausedReason: text('sending_paused_reason'),
+    accountLimits: jsonb('account_limits').$type<StoredAccountLimits>(),
+    // Also the claim on the next refresh: stamped before WhatsApp is asked, so
+    // several workers ask once between them, and a failing lookup is not
+    // repeated on every dispatch.
+    accountLimitsCheckedAt: timestampColumn('account_limits_checked_at'),
     lastStatusAt: timestampColumn('last_status_at').notNull().defaultNow(),
     lastError: text('last_error'),
     createdAt: createdAtColumn(),
@@ -65,5 +94,15 @@ export const whatsAppSessions = pgTable(
       sql`${table.sendPacingMaximumSeconds} >= ${table.sendPacingMinimumSeconds}`,
     ),
     check('whatsapp_sessions_pacing_minimum_check', sql`${table.sendPacingMinimumSeconds} >= 0`),
+    check(
+      'whatsapp_sessions_sending_paused_reason_check',
+      sql`${table.sendingPausedReason} in ('REACHOUT_TIMELOCK')`,
+    ),
+    // A pause without a reason cannot be explained, and a reason without a
+    // pause cannot end.
+    check(
+      'whatsapp_sessions_sending_pause_pair_check',
+      sql`(${table.sendingPausedUntil} is null) = (${table.sendingPausedReason} is null)`,
+    ),
   ],
 );

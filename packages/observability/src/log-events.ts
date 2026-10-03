@@ -17,6 +17,7 @@ export const logEvents = {
   notificationDispatchFailed: 'notification.dispatch.failed',
   notificationDeadLettered: 'notification.dead_lettered',
   providerSessionStatusChanged: 'provider.session.status.changed',
+  providerSendingPaused: 'provider.sending.paused',
 
   webhookReceived: 'webhook.received',
   webhookRejected: 'webhook.rejected',

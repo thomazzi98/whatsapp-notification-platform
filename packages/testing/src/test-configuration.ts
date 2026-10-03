@@ -37,6 +37,7 @@ export function createTestConfiguration(
       maximumLifetimeHours: 24,
       maximumConnectionWaitMinutes: 60,
       stuckClaimTimeoutSeconds: 300,
+      restrictionFallbackPauseHours: 6,
     },
     whatsAppProvider: {
       baseUrl: 'http://waha.invalid:3000',
@@ -44,6 +45,9 @@ export function createTestConfiguration(
       requestTimeoutMilliseconds: 5000,
       webhookPublicUrl: 'http://api.invalid:3000',
       webhookToleranceSeconds: 300,
+      // Off, so a suite does not spend seconds per send showing an indicator
+      // nobody sees. The suites that test typing turn it on.
+      simulateTyping: false,
     },
     security: {
       apiKeyPepper: base64Key(),

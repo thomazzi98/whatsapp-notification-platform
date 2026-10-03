@@ -64,6 +64,13 @@
       "when": 1789040476059,
       "tag": "0008_cross_tenant_references",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790996810809,
+      "tag": "0009_whatsapp_sending_pause",
+      "breakpoints": true
     }
   ]
 }

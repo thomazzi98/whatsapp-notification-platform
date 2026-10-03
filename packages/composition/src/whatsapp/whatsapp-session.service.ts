@@ -21,14 +21,12 @@ import { decryptSecret, encryptSecret } from '@platform/security';
 import { Inject, Injectable } from '@nestjs/common';
 
 import { APPLICATION_CONFIGURATION, DATABASE_CONNECTION } from '../tokens';
+import { ConnectionStateService, FORGOTTEN_BY_PROVIDER } from './connection-state.service';
 
 const SIGNING_KEY_BYTES = 32;
 
 /** What WAHA answers for a session it does not have. */
 const PROVIDER_NOT_FOUND = 404;
-
-const FORGOTTEN_BY_PROVIDER =
-  'The WhatsApp provider no longer has this connection. Start it to pair it again.';
 
 export interface CreateWhatsAppSessionInput {
   readonly applicationId: string;
@@ -43,6 +41,7 @@ export class WhatsAppSessionService {
   private readonly clock: ClockPort;
   private readonly identifiers: IdentifierGeneratorPort;
   private readonly configuration: ApplicationConfiguration;
+  private readonly connectionState: ConnectionStateService;
 
   public constructor(
     @Inject(DATABASE_CONNECTION) connection: DatabaseConnection,
@@ -50,6 +49,7 @@ export class WhatsAppSessionService {
     @Inject(CLOCK_PORT) clock: ClockPort,
     @Inject(IDENTIFIER_GENERATOR_PORT) identifiers: IdentifierGeneratorPort,
     @Inject(APPLICATION_CONFIGURATION) configuration: ApplicationConfiguration,
+    connectionState: ConnectionStateService,
   ) {
     this.sessions = new WhatsAppSessionRepository(connection.database);
     this.notifications = new NotificationRepository(connection.database);
@@ -57,6 +57,7 @@ export class WhatsAppSessionService {
     this.clock = clock;
     this.identifiers = identifiers;
     this.configuration = configuration;
+    this.connectionState = connectionState;
   }
 
   /**
@@ -194,42 +195,14 @@ export class WhatsAppSessionService {
    *
    * Status also arrives by webhook, but a callback can be missed while the API
    * is restarting, and the QR screen is exactly where a stale status is most
-   * damaging: it is the one place a person is waiting for the answer.
+   * damaging: it is the one place a person is waiting for the answer. The
+   * account's limits come with it, from what the provider last heard, so the
+   * page that shows a restriction never has to ask WhatsApp to show it.
    */
   public async get(applicationId: string, sessionId: string): Promise<WhatsAppSessionRecord> {
     const record = await this.getOrFail(applicationId, sessionId);
-    const live = await this.provider.getSession(record.providerSessionName);
 
-    if (live.outcome === 'failed') {
-      return record;
-    }
-
-    if (live.value === undefined) {
-      // The provider no longer has this connection: its state was wiped, or it
-      // was removed behind the platform's back. That is an answer, and it has
-      // to be written down, or a record still saying WORKING keeps being
-      // chosen for sends that can only fail until somebody reconnects.
-      if (record.status !== 'STOPPED') {
-        await this.sessions.recordStatus(sessionId, {
-          status: 'STOPPED',
-          phoneNumber: record.phoneNumber,
-          pushName: record.pushName,
-          lastError: FORGOTTEN_BY_PROVIDER,
-          now: this.clock.now(),
-        });
-      }
-      return this.getOrFail(applicationId, sessionId);
-    }
-
-    await this.sessions.recordStatus(sessionId, {
-      status: live.value.status,
-      phoneNumber: live.value.phoneNumber,
-      pushName: live.value.pushName,
-      lastError: null,
-      now: this.clock.now(),
-    });
-
-    return this.getOrFail(applicationId, sessionId);
+    return this.connectionState.refreshStatus(record);
   }
 
   /**
