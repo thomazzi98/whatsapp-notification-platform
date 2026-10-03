@@ -115,7 +115,10 @@ sequenceDiagram
   API-->>Client: 202 Accepted
 
   Worker->>Postgres: claim QUEUED → PROCESSING (compare-and-swap)
-  Worker->>Postgres: check delivery window, session, pacing slot
+  Worker->>Postgres: check delivery window and session
+  Note over Worker: paused while WhatsApp restricts the number
+  Worker->>Postgres: reserve pacing slot
+  Worker->>WAHA: resolve recipient, show "typing…"
   Worker->>Postgres: beginAttempt — commit before the network call
   Worker->>WAHA: POST /api/sendText
   WAHA-->>Worker: message identifier
@@ -231,6 +234,14 @@ first call the dispatcher makes, so that is where the outage surfaces — and th
 code is classified retryable, so it waits on the backoff curve rather than
 failing. The API, the dashboard and `/ready` are all unaffected, which is the
 whole reason the provider is not part of the readiness probe.
+
+**WhatsApp restricts the number.** Nothing disconnects: the session keeps
+reporting `WORKING` while every message to a new contact is refused. The
+provider repeats the session's status with the restriction, the dispatcher reads
+it from the session lookups it makes anyway, and a refused send says so too.
+From the first of those the connection is paused, and nothing is sent from it
+until the restriction lifts — see
+[ADR 0019](adr/0019-stop-sending-through-a-whatsapp-restriction.md).
 
 ## Where the seams are
 

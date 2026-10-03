@@ -13,9 +13,10 @@ needs to know which one is being made.
 | **Known limitation**          | A deliberate gap. It is not going to be fixed by a test.                                                               |
 
 A test that passes against the stub says the platform behaves correctly **given
-that the provider behaves as modelled**. The stub is modelled on WAHA's NOWEB
-engine and was built from its documented and observed responses, but it is our
-model of the provider, not the provider.
+that the provider behaves as modelled**. The stub was built on WAHA's NOWEB
+engine, from its documented and observed responses, and now answers sends as the
+WEBJS engine production runs; it is our model of the provider, not the provider.
+Everything below marked as verified against WhatsApp was verified on NOWEB.
 
 ## The claims
 
@@ -29,7 +30,7 @@ model of the provider, not the provider.
 | Two workers racing the same notification send it once                      | Verified locally              | `apps/worker/src/jobs/notification-dispatch.integration.test.ts`         |
 | A worker that loses its claim mid-send does not report the send as its own | Verified locally              | Same file; the stub holds the send open while the reaper takes the claim |
 | Acknowledgement ordering (out of order, repeated, missing READ)            | Verified locally              | `apps/worker/src/jobs/webhook-process.integration.test.ts`               |
-| The ack matrix is the same on the WEBJS engine                             | **Known limitation**          | Only NOWEB has been used. Switching engines requires re-validating it    |
+| The ack matrix is the same on the WEBJS engine                             | **Not externally verified**   | Production runs WEBJS; re-validate against a real account after pairing  |
 | Delivery is exactly-once                                                   | **Known limitation**          | It is not. See "The delivery guarantee" below                            |
 
 ### Failure and recovery
@@ -48,6 +49,10 @@ model of the provider, not the provider.
 | The worker drains in-flight work on SIGTERM, and is bounded     | Verified locally            | `apps/worker/src/graceful-shutdown.integration.test.ts`                                         |
 | Postgres going away is survived and reported                    | Verified locally            | Readiness probes; also exercised by hand by stopping the container                              |
 | WAHA going away does not take the API down                      | Verified locally            | `/ready` reports the provider as informational only                                             |
+| A reachout timelock pauses the connection, and nothing is sent  | Verified locally            | `notification-dispatch.integration.test.ts`, `webhook-process.integration.test.ts`              |
+| A message WhatsApp refused (463, 475) is never retried          | Verified locally            | Same file, and `waha-provider.integration.test.ts`                                              |
+| A connection the provider forgot is waited for, not failed      | Verified locally            | `notification-dispatch.integration.test.ts`                                                     |
+| WAHA reports the timelock in the shapes the adapter reads       | **Not externally verified** | Modelled on WAHA's source; capture the real payloads on the first restriction                   |
 | Behaviour under a real WAHA outage, or a WhatsApp ban           | **Not externally verified** | A restriction was seen once, not provoked: [runbook](runbook.md#whatsapp-restricted-the-number) |
 
 ### Isolation and security
