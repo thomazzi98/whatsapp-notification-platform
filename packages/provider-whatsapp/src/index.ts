@@ -4,6 +4,7 @@ export {
   isWebhookTimestampAcceptable,
   parseWebhookEnvelope,
   toProviderEvent,
+  toStoredPayload,
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
 } from './webhook';

@@ -141,12 +141,19 @@ services:
     logging: *logging
 
   waha:
-    image: devlikeapro/waha:noweb-2026.8.2
+    # WEBJS, the engine that drives the real WhatsApp Web client, as in
+    # development; docker-compose.yml says why. A new tag here is the one deploy
+    # that does restart the provider: compose pulls it and recreates the
+    # container, and changing the engine means pairing again (docs/runbook.md).
+    image: devlikeapro/waha:latest-2026.9.2
     restart: unless-stopped
     environment:
-      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
       WAHA_API_KEY: ${WAHA_API_KEY:?set WAHA_API_KEY in .env}
       WHATSAPP_RESTART_ALL_SESSIONS: "True"
+    # The browser needs it; without it Chromium crashes in ways that look like
+    # WhatsApp problems rather than like a container limit.
+    shm_size: "1gb"
     volumes:
       - waha-sessions:/app/.sessions
       - waha-media:/app/.media
@@ -161,7 +168,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 60s
+      start_period: 120s
     logging: *logging
 
 volumes:

@@ -1,4 +1,5 @@
 import { type ProviderFailure } from '../notification/provider-failure';
+import { type AccountLimits } from './account-limits';
 
 /**
  * Session states the platform understands.
@@ -43,6 +44,12 @@ export interface ProviderSession {
   readonly status: ProviderSessionStatus;
   readonly phoneNumber: string | null;
   readonly pushName: string | null;
+  /**
+   * What the provider last heard from WhatsApp about the account's limits,
+   * without asking WhatsApp again. Null when it reported nothing, which is not
+   * the same as nothing being in force.
+   */
+  readonly accountLimits: AccountLimits | null;
 }
 
 export interface ProviderQrCode {
@@ -71,6 +78,14 @@ export interface SendTextMessageInput {
   readonly chatIdentifier: string;
   readonly text: string;
   /** Aborts the request when the worker is shutting down. */
+  readonly abortSignal?: AbortSignal;
+}
+
+export interface ShowTypingInput {
+  readonly sessionName: string;
+  readonly chatIdentifier: string;
+  readonly durationMilliseconds: number;
+  /** Ends the wait early when the worker is shutting down. */
   readonly abortSignal?: AbortSignal;
 }
 
@@ -114,6 +129,20 @@ export interface WhatsAppProviderPort {
     phoneNumber: string,
   ) => Promise<ProviderResult<ResolvedRecipient>>;
   sendTextMessage: (input: SendTextMessageInput) => Promise<ProviderResult<SentMessage>>;
+  /**
+   * Asks WhatsApp, now, what limits the account is under. Costs a round trip to
+   * WhatsApp, unlike the limits reported with the session, so it is kept for
+   * the moments a refusal makes the cached answer suspect.
+   */
+  fetchAccountLimits: (sessionName: string) => Promise<ProviderResult<AccountLimits>>;
+  /**
+   * Shows "typing…" to the recipient for the given time, then stops.
+   *
+   * Best effort, and separate from the send on purpose: it runs before an
+   * attempt is spent, so a worker stopped mid-wait has sent nothing and loses
+   * nothing. A failure only means the indicator was not shown.
+   */
+  showTyping: (input: ShowTypingInput) => Promise<ProviderResult<void>>;
 }
 
 export const WHATSAPP_PROVIDER_PORT = Symbol('WhatsAppProviderPort');

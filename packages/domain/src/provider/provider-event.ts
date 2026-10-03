@@ -2,6 +2,7 @@ import {
   type DeliveryAcknowledgement,
   isDeliveryAcknowledgement,
 } from '../notification/delivery-acknowledgement';
+import { type AccountLimits } from './account-limits';
 import { type ProviderSessionStatus } from './whatsapp-provider.port';
 
 /**
@@ -27,6 +28,13 @@ export type ProviderEvent =
       readonly status: ProviderSessionStatus;
       readonly phoneNumber: string | null;
       readonly pushName: string | null;
+      /**
+       * What WhatsApp currently enforces on the account, when the event says.
+       * The provider repeats the status whenever a restriction starts or
+       * changes, which makes this the earliest warning there is: a refused
+       * message itself is usually reported only as a failed delivery.
+       */
+      readonly accountLimits: AccountLimits | null;
     }
   | { readonly kind: 'unsupported'; readonly eventType: string };
 

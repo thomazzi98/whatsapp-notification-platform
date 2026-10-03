@@ -178,22 +178,24 @@ services:
   # COMPOSE_PROFILES in .env, because both answer to the hostname `waha`.
   waha:
     profiles: ["whatsapp"]
-    # Pinned to a digest-stable tag rather than `latest`: the provider tracks
-    # WhatsApp's own changes closely, and an unannounced upgrade here would
-    # change the acknowledgement semantics the delivery rules are built on.
-    image: devlikeapro/waha:noweb-2026.8.2
+    # Pinned to a release rather than `latest`: the provider tracks WhatsApp's
+    # own changes closely, and an unannounced upgrade here would change the
+    # acknowledgement semantics the delivery rules are built on. `latest-*` is
+    # the release's WEBJS image, Chromium included.
+    image: devlikeapro/waha:latest-2026.9.2
     restart: unless-stopped
     environment:
-      # NOWEB is a websocket engine with no headless browser, so it starts in
-      # seconds and avoids an entire class of Chromium failures. The namespace
-      # defaults to the engine name, which means changing this forces every
-      # connection to be paired again.
-      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      # WEBJS drives the real WhatsApp Web client in a headless browser. It is
+      # heavier and slower to start than the websocket engines, and it is the
+      # one WAHA documents as the engine that avoids blocking: the number was
+      # restricted repeatedly on NOWEB at a handful of messages a day. The
+      # namespace defaults to the engine name, so changing this forces every
+      # connection to be paired again (docs/runbook.md).
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
       WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY must be set; run pnpm setup:env}
       WHATSAPP_RESTART_ALL_SESSIONS: "True"
-    # Only needed by the Chromium-based engine, and free to set: a container
-    # that runs out of shared memory fails in ways that look like WhatsApp
-    # problems rather than like a container limit.
+    # The browser needs it: a container that runs out of shared memory fails in
+    # ways that look like WhatsApp problems rather than like a container limit.
     shm_size: "1gb"
     volumes:
       - waha-sessions:/app/.sessions
@@ -225,9 +227,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      # Pairing state is restored at boot, which takes appreciably longer than
-      # an empty start.
-      start_period: 60s
+      # Pairing state is restored at boot, and the browser has to start first,
+      # which takes appreciably longer than an empty start.
+      start_period: 120s
 
   # A deterministic stand-in for WAHA, so the delivery pipeline can be exercised
   # without a phone, a scannable code, or an account that can be banned.

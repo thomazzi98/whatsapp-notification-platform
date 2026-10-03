@@ -69,6 +69,23 @@ describe('failure classification', () => {
   it('retries an unmapped provider error, conservatively', () => {
     expect(classifyFailureCode('provider_unknown_error')).toBe('RETRYABLE');
   });
+
+  it('waits out a restriction that ends at a known time', () => {
+    expect(classifyFailureCode('connection_paused')).toBe('RETRYABLE');
+  });
+
+  it('never insists on a message WhatsApp refused for reaching out', () => {
+    // Trying again while the restriction holds is what turns a temporary limit
+    // into a ban.
+    expect(classifyFailureCode('connection_restricted')).toBe('PERMANENT');
+    expect(classifyFailureCode('new_chat_quota_exceeded')).toBe('PERMANENT');
+  });
+
+  it('knows a refused message was never sent', () => {
+    for (const code of ['connection_restricted', 'new_chat_quota_exceeded'] as const) {
+      expect(hasUnknownOutcome(createProviderFailure(code, 'Refused.')), code).toBe(false);
+    }
+  });
 });
 
 describe('hasUnknownOutcome', () => {
@@ -147,9 +164,12 @@ describe('the failure vocabulary itself', () => {
       'unknown_outcome_fail_closed',
       'provider_acknowledgement_error',
       'provider_outcome_unknown',
+      'connection_paused',
+      'connection_restricted',
+      'new_chat_quota_exceeded',
     ]);
 
-    expect(declared.size).toBe(20);
+    expect(declared.size).toBe(23);
     for (const code of constructedElsewhere) {
       expect(declared.has(code)).toBe(true);
     }

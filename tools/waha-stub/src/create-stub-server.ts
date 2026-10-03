@@ -11,6 +11,142 @@ import { renderQrPlaceholderPng } from './qr-image';
 import { MAXIMUM_QR_ATTEMPTS, SessionStore, type StubSession } from './session-store';
 import { WebhookSender } from './webhook-sender';
 
+/**
+ * The engines whose send response the stub can reproduce. Production runs
+ * WEBJS; NOWEB stays reproducible because the adapter still reads its shape.
+ */
+const responseEngines = ['WEBJS', 'NOWEB'] as const;
+
+type ResponseEngine = (typeof responseEngines)[number];
+
+function isResponseEngine(candidate: string): candidate is ResponseEngine {
+  return (responseEngines as readonly string[]).includes(candidate);
+}
+
+/** Something the platform asked WhatsApp to do in a chat, recorded in order. */
+interface ChatActivity {
+  readonly action: 'seen' | 'typing_started' | 'typing_stopped' | 'sent';
+  readonly chatId: string;
+}
+
+/** Enough to assert on any one test's sequence without growing for ever. */
+const MAXIMUM_RECORDED_CHAT_ACTIVITY = 200;
+
+interface ChatActionBody {
+  readonly session?: string;
+  readonly chatId?: string;
+}
+
+interface RestrictionBody {
+  /** Minutes until the timelock lifts; zero or less lifts it now. */
+  readonly timelockMinutes?: number;
+  /** A timelock in force with no end WhatsApp would say. */
+  readonly timelockWithoutEnd?: boolean;
+  readonly enforcementType?: string;
+  readonly cappingStatus?: string;
+  readonly usedQuota?: number;
+  readonly totalQuota?: number;
+  /** Makes the live lookups answer as an engine that cannot read them does. */
+  readonly lookupUnavailable?: boolean;
+}
+
+function applyRestriction(session: StubSession, body: RestrictionBody, now: number): void {
+  const nowSeconds = Math.floor(now / 1000);
+
+  if (body.timelockWithoutEnd === true) {
+    session.reachoutTimelock = {
+      enforcementType: body.enforcementType ?? session.reachoutTimelock.enforcementType,
+      isActive: true,
+      timeEnforcementEnds: null,
+    };
+  }
+  if (body.timelockMinutes !== undefined) {
+    const isActive = body.timelockMinutes > 0;
+    session.reachoutTimelock = {
+      enforcementType: body.enforcementType ?? session.reachoutTimelock.enforcementType,
+      isActive,
+      timeEnforcementEnds: isActive ? nowSeconds + Math.round(body.timelockMinutes * 60) : null,
+    };
+  }
+  if (body.cappingStatus !== undefined) {
+    session.messageCapping = {
+      ...session.messageCapping,
+      cappingStatus: body.cappingStatus,
+      totalQuota: body.totalQuota ?? session.messageCapping.totalQuota,
+      usedQuota: body.usedQuota ?? session.messageCapping.usedQuota,
+      cycleStart: nowSeconds,
+      cycleEnd: nowSeconds + 30 * 24 * 3600,
+    };
+  }
+}
+
+/**
+ * What WAHA attaches to a WORKING status: only the restrictions in force, and
+ * nothing at all when none is. An absent timelock therefore means none is
+ * known, not that one has lifted.
+ */
+function toRestrictionData(session: StubSession): Record<string, unknown> | null {
+  const data: Record<string, unknown> = {};
+
+  if (session.reachoutTimelock.isActive) {
+    data.reachoutTimelock = session.reachoutTimelock;
+  }
+  if (session.messageCapping.cappingStatus !== 'NONE') {
+    data.messageCapping = session.messageCapping;
+  }
+  return Object.keys(data).length > 0 ? data : null;
+}
+
+/** The WEBJS shape: the WhatsApp Web message object, identifier nested. */
+function toWebjsSentMessage(
+  chatIdentifier: string,
+  messageIdentifier: string,
+  text: string,
+  senderPhoneNumber: string,
+  sentAtSeconds: number,
+): Record<string, unknown> {
+  return {
+    id: {
+      fromMe: true,
+      remote: chatIdentifier,
+      id: messageIdentifier,
+      _serialized: `true_${chatIdentifier}_${messageIdentifier}`,
+    },
+    ack: 0,
+    body: text,
+    type: 'chat',
+    timestamp: sentAtSeconds,
+    from: `${senderPhoneNumber}@c.us`,
+    to: chatIdentifier,
+    hasMedia: false,
+  };
+}
+
+/** The NOWEB shape: a Baileys key, with no serialized form anywhere. */
+function toNowebSentMessage(
+  chatIdentifier: string,
+  messageIdentifier: string,
+  text: string,
+  _senderPhoneNumber: string,
+  sentAtSeconds: number,
+): Record<string, unknown> {
+  return {
+    key: {
+      remoteJid: chatIdentifier.replace('@c.us', '@s.whatsapp.net'),
+      fromMe: true,
+      id: messageIdentifier,
+    },
+    message: { extendedTextMessage: { text } },
+    messageTimestamp: String(sentAtSeconds),
+    status: 'PENDING',
+  };
+}
+
+const sentMessageByEngine: Record<ResponseEngine, typeof toWebjsSentMessage> = {
+  WEBJS: toWebjsSentMessage,
+  NOWEB: toNowebSentMessage,
+};
+
 export interface StubServerOptions {
   readonly apiKey: string;
 }
@@ -51,7 +187,15 @@ function toSessionResponse(session: StubSession): Record<string, unknown> {
     me:
       session.phoneNumber === null
         ? null
-        : { id: `${session.phoneNumber}@c.us`, pushName: session.pushName },
+        : {
+            id: `${session.phoneNumber}@c.us`,
+            pushName: session.pushName,
+            // What the engine last heard from WhatsApp, served without asking
+            // again: null until an enforcement has been seen.
+            reachoutTimelock: session.reachoutTimelock.isActive ? session.reachoutTimelock : null,
+            messageCapping:
+              session.messageCapping.cappingStatus === 'NONE' ? null : session.messageCapping,
+          },
   };
 }
 
@@ -76,6 +220,32 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
   const webhooks = new WebhookSender();
   let forcedFailureMode: FailureMode = 'none';
   let sentMessageCounter = 0;
+  let recipientLookupCount = 0;
+  let responseEngine: ResponseEngine = 'WEBJS';
+  let isAccountLimitsLookupUnavailable = false;
+  let chatActivity: ChatActivity[] = [];
+
+  const recordChatActivity = (activity: ChatActivity): void => {
+    chatActivity = [...chatActivity, activity].slice(-MAXIMUM_RECORDED_CHAT_ACTIVITY);
+  };
+
+  /** Repeats the status with the restrictions in force, as WAHA does when they change. */
+  const announceRestrictions = async (session: StubSession): Promise<void> => {
+    await webhooks.send(
+      session.webhooks,
+      session.name,
+      'session.status',
+      {
+        name: session.name,
+        status: session.status,
+        statuses: [{ status: session.status, timestamp: Date.now() }],
+        data: toRestrictionData(session),
+      },
+      session.phoneNumber === null
+        ? null
+        : { id: `${session.phoneNumber}@c.us`, pushName: session.pushName ?? '' },
+    );
+  };
   /**
    * Holds a send open for a bounded time. Distinct from the `timeout` failure
    * mode, which never answers at all: this one still succeeds, which is what
@@ -101,9 +271,9 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
 
   server.get('/api/server/version', () => ({
     version: 'stub',
-    engine: 'NOWEB',
+    engine: 'WEBJS',
     tier: 'CORE',
-    browser: null,
+    browser: '/usr/bin/chromium',
   }));
 
   server.post('/api/sessions', async (request, reply) => {
@@ -152,6 +322,38 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       pushName: session.pushName,
     });
   });
+
+  /**
+   * The live lookups. Each asks WhatsApp afresh on the real server, and an
+   * engine whose WhatsApp Web build lacks the data answers 501.
+   */
+  server.get<{ Params: { session: string } }>(
+    '/api/sessions/:session/timelock',
+    (request, reply) => {
+      const session = sessions.find(request.params.session);
+      if (session === undefined) {
+        return reply.status(404).send({ message: 'Session not found.' });
+      }
+      if (isAccountLimitsLookupUnavailable) {
+        return reply.status(501).send({ message: 'Not implemented by this engine.' });
+      }
+      return reply.send(session.reachoutTimelock);
+    },
+  );
+
+  server.get<{ Params: { session: string } }>(
+    '/api/sessions/:session/capping',
+    (request, reply) => {
+      const session = sessions.find(request.params.session);
+      if (session === undefined) {
+        return reply.status(404).send({ message: 'Session not found.' });
+      }
+      if (isAccountLimitsLookupUnavailable) {
+        return reply.status(501).send({ message: 'Not implemented by this engine.' });
+      }
+      return reply.send(session.messageCapping);
+    },
+  );
 
   for (const action of ['start', 'stop', 'logout', 'restart'] as const) {
     server.post<{ Params: { session: string } }>(
@@ -232,6 +434,7 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
     '/api/contacts/check-exists',
     (request, reply) => {
       const phone = request.query.phone ?? '';
+      recipientLookupCount += 1;
 
       const failure = responseForFailureMode(forcedFailureMode);
       if (failure !== undefined) {
@@ -276,6 +479,20 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
 
     const failure = responseForFailureMode(mode);
     if (failure !== undefined) {
+      // A refusal for reaching out also changes what the account reports, as it
+      // does on the engine that refreshes its record when WhatsApp refuses.
+      if (session !== undefined && mode === 'reachout_timelock') {
+        applyRestriction(session, { timelockMinutes: 60 }, Date.now());
+        await announceRestrictions(session);
+      }
+      if (session !== undefined && mode === 'message_capping') {
+        applyRestriction(
+          session,
+          { cappingStatus: 'CAPPED', usedQuota: 50, totalQuota: 50 },
+          Date.now(),
+        );
+        await announceRestrictions(session);
+      }
       // The header included: a provider that says how long to wait and one that
       // does not are different failures, and the caller is meant to notice.
       return reply
@@ -295,20 +512,45 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
     sentMessageCounter += 1;
     const messageIdentifier = `STUB${String(sentMessageCounter).padStart(6, '0')}`;
     const sentAtSeconds = Math.floor(Date.now() / 1000);
+    recordChatActivity({ action: 'sent', chatId: chatIdentifier });
 
-    // The NOWEB engine's shape: a Baileys key carrying the raw identifier,
-    // with no serialized form anywhere in the response.
-    return reply.send({
-      key: {
-        remoteJid: chatIdentifier.replace('@c.us', '@s.whatsapp.net'),
-        fromMe: true,
-        id: messageIdentifier,
-      },
-      message: { extendedTextMessage: { text: body.text ?? '' } },
-      messageTimestamp: String(sentAtSeconds),
-      status: 'PENDING',
-    });
+    // Shaped as the engine production runs answers, WEBJS unless a test asked
+    // for another. Neither carries the identifier the acknowledgement will use
+    // (see /__stub/sessions/:session/acknowledge): only the final segment is
+    // common to both.
+    return reply.send(
+      sentMessageByEngine[responseEngine](
+        chatIdentifier,
+        messageIdentifier,
+        body.text ?? '',
+        session.phoneNumber ?? '',
+        sentAtSeconds,
+      ),
+    );
   });
+
+  const chatActions = [
+    ['/api/sendSeen', 'seen'],
+    ['/api/startTyping', 'typing_started'],
+    ['/api/stopTyping', 'typing_stopped'],
+  ] as const;
+
+  for (const [path, action] of chatActions) {
+    server.post(path, (request, reply) => {
+      const body = request.body as ChatActionBody;
+
+      const failure = responseForFailureMode(forcedFailureMode);
+      if (failure !== undefined) {
+        return reply.status(failure.statusCode).send(failure.body);
+      }
+      if (sessions.find(body.session ?? 'default')?.status !== 'WORKING') {
+        return reply.status(422).send({ message: 'The session is not connected.' });
+      }
+
+      recordChatActivity({ action, chatId: body.chatId ?? '' });
+      return reply.status(201).send({});
+    });
+  }
 
   registerControlPlane();
 
@@ -321,6 +563,10 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       forcedFailureMode = 'none';
       sentMessageCounter = 0;
       sendDelayMilliseconds = 0;
+      recipientLookupCount = 0;
+      responseEngine = 'WEBJS';
+      isAccountLimitsLookupUnavailable = false;
+      chatActivity = [];
       return reply.send({ reset: true });
     });
 
@@ -329,6 +575,40 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
 
       return reply.send({ sendDelayMilliseconds });
     });
+
+    /** Answers sends as another engine does, so the adapter's other readings stay tested. */
+    server.post<{ Body: { engine?: string } }>('/__stub/engine', (request, reply) => {
+      const engine = request.body.engine ?? 'WEBJS';
+      if (!isResponseEngine(engine)) {
+        return reply.status(400).send({ message: `Unknown engine: ${engine}` });
+      }
+      responseEngine = engine;
+      return reply.send({ engine });
+    });
+
+    /**
+     * Stands in for WhatsApp restricting the account: sets what the session
+     * reports, and repeats its status with the restrictions in force.
+     */
+    server.post<{ Params: { session: string }; Body: RestrictionBody }>(
+      '/__stub/sessions/:session/restrict',
+      async (request, reply) => {
+        const session = sessions.find(request.params.session);
+        if (session === undefined) {
+          return reply.status(404).send({ message: 'Session not found.' });
+        }
+
+        applyRestriction(session, request.body, Date.now());
+        isAccountLimitsLookupUnavailable =
+          request.body.lookupUnavailable ?? isAccountLimitsLookupUnavailable;
+        await announceRestrictions(session);
+
+        return reply.send({
+          reachoutTimelock: session.reachoutTimelock,
+          messageCapping: session.messageCapping,
+        });
+      },
+    );
 
     server.post<{ Body: { mode?: string } }>('/__stub/failure-mode', (request, reply) => {
       const mode = request.body.mode ?? 'none';
@@ -431,6 +711,9 @@ export function createStubServer(options: StubServerOptions): FastifyInstance {
       sessions: sessions.list(),
       forcedFailureMode,
       sentMessageCount: sentMessageCounter,
+      recipientLookupCount,
+      responseEngine,
+      chatActivity,
     }));
   }
 }

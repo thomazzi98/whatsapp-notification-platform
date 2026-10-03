@@ -47,6 +47,33 @@ describe('classifyHttpStatus', () => {
     expect(classifyHttpStatus(429, 'slow down', headers).retryAfterSeconds).toBe(30);
   });
 
+  it('recognises WhatsApp refusing a new contact, whatever status wraps it', () => {
+    for (const status of [500, 400, 422]) {
+      const failure = classifyHttpStatus(status, 'server returned error 463');
+
+      expect(failure.code, String(status)).toBe('connection_restricted');
+      expect(failure.classification).toBe('PERMANENT');
+    }
+  });
+
+  it('recognises WhatsApp refusing a message once the quota is used up', () => {
+    const failure = classifyHttpStatus(500, 'server returned error 475');
+
+    expect(failure.code).toBe('new_chat_quota_exceeded');
+    expect(failure.classification).toBe('PERMANENT');
+  });
+
+  it('explains a refusal in its own words rather than in the engine wording', () => {
+    const failure = classifyHttpStatus(500, 'server returned error 463');
+
+    expect(failure.message).toContain('restricted from starting conversations with new contacts');
+    expect(failure.message).not.toContain('463');
+  });
+
+  it('does not mistake a number that merely contains the digits for a refusal', () => {
+    expect(classifyHttpStatus(500, 'no chat for 5511994630000').code).toBe('provider_server_error');
+  });
+
   it('ignores a Retry-After value that is not a usable number', () => {
     for (const value of ['soon', '-5', '']) {
       const headers = new Headers({ 'retry-after': value });

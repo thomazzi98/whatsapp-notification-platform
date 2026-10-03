@@ -217,7 +217,7 @@ describe('QR codes', () => {
 });
 
 describe('sending messages', () => {
-  it('answers with a key object, as the NOWEB engine does', async () => {
+  it('answers with a nested identifier, as the WEBJS engine does', async () => {
     await createWorkingSession();
 
     const sent = await call({
@@ -225,13 +225,14 @@ describe('sending messages', () => {
       url: '/api/sendText',
       payload: { session: 'default', chatId: '5511999998888@c.us', text: 'Hello' },
     });
-    const key = sent.body.key as { id?: string; fromMe?: boolean };
+    const identifier = sent.body.id as { id?: string; _serialized?: string; fromMe?: boolean };
 
     expect(sent.statusCode).toBe(200);
-    expect(key.id).toBeTypeOf('string');
-    // No serialized identifier anywhere in the response: the send carries the
-    // raw one, and only the acknowledgement serializes it.
-    expect(JSON.stringify(sent.body)).not.toContain('true_');
+    expect(identifier.fromMe).toBe(true);
+    expect(identifier.id).toBeTypeOf('string');
+    // The serialized form names the chat the message went to, which is not
+    // what the acknowledgement will name.
+    expect(identifier._serialized).toBe(`true_5511999998888@c.us_${identifier.id ?? ''}`);
   });
 
   it('acknowledges by the linked device, not by the number it sent to', async () => {
@@ -255,7 +256,7 @@ describe('sending messages', () => {
       url: '/api/sendText',
       payload: { session: 'default', chatId: '5511999998888@c.us', text: 'Hello' },
     });
-    const messageIdentifier = (sent.body.key as { id: string }).id;
+    const messageIdentifier = (sent.body.id as { id: string }).id;
 
     await call({
       method: 'POST',
@@ -386,5 +387,193 @@ describe('webhook signing', () => {
 
     expect(reserialised).not.toBe(original);
     expect(signPayload(original, 'key')).not.toBe(signPayload(reserialised, 'key'));
+  });
+});
+
+describe('answering as another engine', () => {
+  it('can answer a send as NOWEB does, with a key and no serialized form', async () => {
+    await createWorkingSession();
+    await call({ method: 'POST', url: '/__stub/engine', payload: { engine: 'NOWEB' } });
+
+    const sent = await call({
+      method: 'POST',
+      url: '/api/sendText',
+      payload: { session: 'default', chatId: '5511999998888@c.us', text: 'Hello' },
+    });
+
+    expect((sent.body.key as { id?: string }).id).toBeTypeOf('string');
+    expect(JSON.stringify(sent.body)).not.toContain('true_');
+  });
+
+  it('rejects an engine it cannot imitate', async () => {
+    const response = await call({
+      method: 'POST',
+      url: '/__stub/engine',
+      payload: { engine: 'VENOM' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+});
+
+describe('restrictions WhatsApp places on the account', () => {
+  it('reports no timelock and no cap on an account nothing has happened to', async () => {
+    await createWorkingSession();
+
+    const timelock = await call({ method: 'GET', url: '/api/sessions/default/timelock' });
+    const capping = await call({ method: 'GET', url: '/api/sessions/default/capping' });
+
+    expect(timelock.body).toMatchObject({ isActive: false, timeEnforcementEnds: null });
+    expect(capping.body).toMatchObject({ cappingStatus: 'NONE', totalQuota: -1 });
+  });
+
+  it('serves a timelock it was told about, live and with the session', async () => {
+    await createWorkingSession();
+    await call({
+      method: 'POST',
+      url: '/__stub/sessions/default/restrict',
+      payload: { timelockMinutes: 90 },
+    });
+
+    const timelock = await call({ method: 'GET', url: '/api/sessions/default/timelock' });
+    const session = await call({ method: 'GET', url: '/api/sessions/default' });
+
+    expect(timelock.body.isActive).toBe(true);
+    expect(timelock.body.timeEnforcementEnds).toBeTypeOf('number');
+    expect((session.body.me as { reachoutTimelock?: unknown }).reachoutTimelock).toStrictEqual(
+      timelock.body,
+    );
+  });
+
+  it('repeats the status with the restriction in force when it changes', async () => {
+    await call({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: {
+        name: 'default',
+        start: true,
+        config: {
+          webhooks: [{ url: await unreachableReceiver(), events: ['session.status'] }],
+        },
+      },
+    });
+    await call({ method: 'POST', url: '/__stub/sessions/default/scan', payload: {} });
+    await call({
+      method: 'POST',
+      url: '/__stub/sessions/default/restrict',
+      payload: {
+        timelockMinutes: 30,
+        cappingStatus: 'FIRST_WARNING',
+        usedQuota: 80,
+        totalQuota: 100,
+      },
+    });
+
+    const delivered = await call({ method: 'GET', url: '/__stub/webhooks' });
+    const deliveries = delivered.body.deliveries as {
+      envelope: {
+        event: string;
+        payload: { status: string; data: Record<string, unknown> | null };
+      };
+    }[];
+    const latest = deliveries.findLast((entry) => entry.envelope.event === 'session.status');
+
+    expect(latest?.envelope.payload.status).toBe('WORKING');
+    expect(latest?.envelope.payload.data).toMatchObject({
+      reachoutTimelock: { isActive: true },
+      messageCapping: { cappingStatus: 'FIRST_WARNING', usedQuota: 80, totalQuota: 100 },
+    });
+  });
+
+  it('answers the live lookups as an engine that cannot read them, when told to', async () => {
+    await createWorkingSession();
+    await call({
+      method: 'POST',
+      url: '/__stub/sessions/default/restrict',
+      payload: { lookupUnavailable: true },
+    });
+
+    const timelock = await call({ method: 'GET', url: '/api/sessions/default/timelock' });
+    const capping = await call({ method: 'GET', url: '/api/sessions/default/capping' });
+
+    expect(timelock.statusCode).toBe(501);
+    expect(capping.statusCode).toBe(501);
+  });
+
+  it('refuses a message to a designated number as WhatsApp refuses a new contact', async () => {
+    await createWorkingSession();
+
+    const sent = await call({
+      method: 'POST',
+      url: '/api/sendText',
+      payload: { session: 'default', chatId: '5511999990463@c.us', text: 'Hello' },
+    });
+    const timelock = await call({ method: 'GET', url: '/api/sessions/default/timelock' });
+
+    expect(sent.statusCode).toBe(500);
+    expect(JSON.stringify(sent.body)).toContain('server returned error 463');
+    expect(timelock.body.isActive).toBe(true);
+  });
+
+  it('refuses a message once the quota is used up, and says so', async () => {
+    await createWorkingSession();
+
+    const sent = await call({
+      method: 'POST',
+      url: '/api/sendText',
+      payload: { session: 'default', chatId: '5511999990475@c.us', text: 'Hello' },
+    });
+    const capping = await call({ method: 'GET', url: '/api/sessions/default/capping' });
+
+    expect(JSON.stringify(sent.body)).toContain('server returned error 475');
+    expect(capping.body.cappingStatus).toBe('CAPPED');
+  });
+});
+
+describe('what the platform does in a chat', () => {
+  it('records seen, typing and the send in the order they happened', async () => {
+    await createWorkingSession();
+    const chat = { session: 'default', chatId: '5511999998888@c.us' };
+
+    await call({ method: 'POST', url: '/api/sendSeen', payload: chat });
+    await call({ method: 'POST', url: '/api/startTyping', payload: chat });
+    await call({ method: 'POST', url: '/api/stopTyping', payload: chat });
+    await call({ method: 'POST', url: '/api/sendText', payload: { ...chat, text: 'Hello' } });
+
+    const state = await call({ method: 'GET', url: '/__stub/state' });
+
+    expect(state.body.chatActivity).toStrictEqual([
+      { action: 'seen', chatId: chat.chatId },
+      { action: 'typing_started', chatId: chat.chatId },
+      { action: 'typing_stopped', chatId: chat.chatId },
+      { action: 'sent', chatId: chat.chatId },
+    ]);
+  });
+
+  it('refuses to show typing on a session that is not connected', async () => {
+    await call({ method: 'POST', url: '/api/sessions', payload: { name: 'default', start: true } });
+
+    const typing = await call({
+      method: 'POST',
+      url: '/api/startTyping',
+      payload: { session: 'default', chatId: '5511999998888@c.us' },
+    });
+
+    expect(typing.statusCode).toBe(422);
+  });
+
+  it('counts recipient lookups, so a caller that repeats them can be caught', async () => {
+    await call({
+      method: 'GET',
+      url: '/api/contacts/check-exists?phone=5511999998888&session=default',
+    });
+    await call({
+      method: 'GET',
+      url: '/api/contacts/check-exists?phone=5511999998888&session=default',
+    });
+
+    const state = await call({ method: 'GET', url: '/__stub/state' });
+
+    expect(state.body.recipientLookupCount).toBe(2);
   });
 });

@@ -23,6 +23,9 @@ export const providerFailureCodes = [
   'maximum_attempts_exhausted',
   'delivery_window_expired',
   'connection_unavailable',
+  'connection_paused',
+  'connection_restricted',
+  'new_chat_quota_exceeded',
 ] as const;
 
 export type ProviderFailureCode = (typeof providerFailureCodes)[number];
@@ -38,7 +41,7 @@ export interface ProviderFailure {
 /**
  * The single table mapping a failure to what the platform does about it.
  *
- * Four entries deserve explanation. `provider_unauthorized` is permanent and
+ * Seven entries deserve explanation. `provider_unauthorized` is permanent and
  * operator-actionable: it means the platform's own WAHA credentials are wrong,
  * so every send will fail until a human fixes it, and retrying only hides that.
  * `provider_acknowledgement_error` is permanent because the message was already
@@ -49,6 +52,12 @@ export interface ProviderFailure {
  * is permanent although the connection may well come back: a message that
  * waited out an outage is sent late or not at all, and sending a whole
  * backlog the moment a number reconnects is the burst that gets it restricted.
+ * `connection_paused` is retryable for the same reason a disconnection is: the
+ * number is waiting out a restriction that ends at a known time, and nothing
+ * is tried until then. `connection_restricted` and `new_chat_quota_exceeded`
+ * are permanent because WhatsApp itself refused the message: trying again
+ * while the restriction holds is what turns a temporary limit into a ban, and
+ * the message is stale long before a monthly quota resets.
  */
 const classificationByCode: Record<ProviderFailureCode, FailureClassification> = {
   provider_unreachable: 'RETRYABLE',
@@ -72,6 +81,9 @@ const classificationByCode: Record<ProviderFailureCode, FailureClassification> =
   maximum_attempts_exhausted: 'PERMANENT',
   delivery_window_expired: 'PERMANENT',
   connection_unavailable: 'PERMANENT',
+  connection_paused: 'RETRYABLE',
+  connection_restricted: 'PERMANENT',
+  new_chat_quota_exceeded: 'PERMANENT',
 };
 
 /**

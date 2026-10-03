@@ -49,6 +49,26 @@ const RETRY_AFTER_HEADER = 'retry-after';
 const SESSION_STATE_PATTERN =
   /session.*(not connected|not ready|not working|starting|stopped|scan)/i;
 
+/**
+ * WhatsApp refusing a message for the account's reach rather than for the
+ * message: error 463 is the reachout timelock, 475 the used-up quota of new
+ * chats. The engine passes WhatsApp's own wording through, so this is matched
+ * on the text, whatever status WAHA wraps it in.
+ */
+const REACHOUT_TIMELOCK_PATTERN = /\b463\b|reach-?out|time-?lock/i;
+const MESSAGE_CAPPING_PATTERN = /\b475\b|capping|capped/i;
+
+/**
+ * Written by the platform rather than passed through: the reason reaches the
+ * public API, and what WhatsApp's refusal means is the useful part of it.
+ */
+const refusalReasons: Partial<Record<ProviderFailureCode, string>> = {
+  connection_restricted:
+    'WhatsApp refused the message because this number is temporarily restricted from starting conversations with new contacts. Sending from it is paused until the restriction lifts.',
+  new_chat_quota_exceeded:
+    'WhatsApp refused the message because this number has used up its monthly allowance of messages to people who have not replied to it.',
+};
+
 export function classifyHttpStatus(
   status: number,
   message: string,
@@ -57,13 +77,19 @@ export function classifyHttpStatus(
   const code = readCode(status, message);
   const retryAfterSeconds = readRetryAfterSeconds(headers);
 
-  return createProviderFailure(code, message, {
+  return createProviderFailure(code, refusalReasons[code] ?? message, {
     providerStatusCode: status,
     ...(retryAfterSeconds !== undefined && { retryAfterSeconds }),
   });
 }
 
 function readCode(status: number, message: string): ProviderFailureCode {
+  if (REACHOUT_TIMELOCK_PATTERN.test(message)) {
+    return 'connection_restricted';
+  }
+  if (MESSAGE_CAPPING_PATTERN.test(message)) {
+    return 'new_chat_quota_exceeded';
+  }
   if (status === 422 && SESSION_STATE_PATTERN.test(message)) {
     return 'session_not_ready';
   }

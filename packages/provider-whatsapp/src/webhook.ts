@@ -8,6 +8,8 @@ import {
 } from '@platform/domain';
 import { z } from 'zod';
 
+import { readAccountLimits } from './account-limits';
+
 export const WEBHOOK_SIGNATURE_HEADER = 'x-webhook-hmac';
 export const WEBHOOK_TIMESTAMP_HEADER = 'x-webhook-timestamp';
 
@@ -41,6 +43,8 @@ const acknowledgementPayloadSchema = z.object({
 const sessionStatusPayloadSchema = z.object({
   name: z.string().optional(),
   status: z.string(),
+  // Present on a WORKING status repeated because a restriction changed.
+  data: z.unknown().optional(),
 });
 
 export function parseWebhookEnvelope(body: unknown): WebhookEnvelope | undefined {
@@ -97,16 +101,52 @@ export function toProviderEvent(envelope: WebhookEnvelope): ProviderEvent {
       return { kind: 'unsupported', eventType: envelope.event };
     }
 
+    const status = toProviderSessionStatus(payload.data.status);
+
     return {
       kind: 'session_status',
       sessionName: payload.data.name ?? envelope.session,
-      status: toProviderSessionStatus(payload.data.status),
+      status,
       phoneNumber: toPhoneNumber(envelope.me?.id),
       pushName: envelope.me?.pushName ?? null,
+      // Only a WORKING session.status speaks for the limits: WAHA attaches what
+      // is in force to exactly that, and to nothing else, so any other event
+      // says nothing about them rather than that nothing is in force.
+      accountLimits:
+        status === 'WORKING' && envelope.event === 'session.status'
+          ? readAccountLimits(payload.data.data)
+          : null,
     };
   }
 
   return { kind: 'unsupported', eventType: envelope.event };
+}
+
+/** The fields of an acknowledgement the platform acts on. */
+const ACKNOWLEDGEMENT_FIELDS = ['id', 'fromMe', 'ack', 'ackName'] as const;
+
+/**
+ * What of a callback is worth keeping in the inbox.
+ *
+ * An acknowledgement from the WEBJS engine is the whole message it concerns —
+ * the text that was sent, and the browser's internal record of it — when the
+ * platform needs four fields of it. Storing the rest would copy every
+ * notification's text into a second table with every receipt. Other events are
+ * kept as they came: they carry no message content.
+ */
+export function toStoredPayload(
+  event: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (event !== 'message.ack') {
+    return payload;
+  }
+  return Object.fromEntries(
+    ACKNOWLEDGEMENT_FIELDS.filter((field) => Object.hasOwn(payload, field)).map((field) => [
+      field,
+      payload[field],
+    ]),
+  );
 }
 
 /**

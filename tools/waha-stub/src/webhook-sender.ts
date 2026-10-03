@@ -81,7 +81,7 @@ export class WebhookSender {
       session: sessionName,
       event,
       payload,
-      engine: 'NOWEB',
+      engine: 'WEBJS',
       environment: { tier: 'CORE', version: 'stub' },
       me,
     };

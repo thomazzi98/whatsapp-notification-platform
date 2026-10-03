@@ -7,6 +7,7 @@ import {
   isWebhookTimestampAcceptable,
   parseWebhookEnvelope,
   toProviderEvent,
+  toStoredPayload,
 } from './webhook';
 
 const signingKey = 'a-shared-signing-key';
@@ -186,6 +187,73 @@ describe('toProviderEvent', () => {
       status: 'WORKING',
       phoneNumber: '+5511999990000',
       pushName: 'Storefront',
+      accountLimits: { reachoutTimelock: null, newChatQuota: null },
+    });
+  });
+
+  it('reads the restrictions a WORKING status is repeated with', () => {
+    const result = toProviderEvent(
+      envelopeFor('session.status', {
+        name: 'wnp-1',
+        status: 'WORKING',
+        statuses: [],
+        data: {
+          reachoutTimelock: {
+            isActive: true,
+            timeEnforcementEnds: 1_791_000_000,
+            enforcementType: 'WEB_COMPANION_ONLY',
+          },
+          messageCapping: {
+            cappingStatus: 'FIRST_WARNING',
+            totalQuota: 100,
+            usedQuota: 80,
+            cycleEnd: 1_793_000_000,
+            mvStatus: null,
+          },
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      kind: 'session_status',
+      accountLimits: {
+        reachoutTimelock: {
+          isActive: true,
+          endsAt: new Date(1_791_000_000_000),
+          enforcementType: 'WEB_COMPANION_ONLY',
+        },
+        newChatQuota: {
+          status: 'FIRST_WARNING',
+          total: 100,
+          used: 80,
+          cycleEndsAt: new Date(1_793_000_000_000),
+        },
+      },
+    });
+  });
+
+  it('says nothing about the limits on a status other than WORKING', () => {
+    // WAHA attaches restrictions to a WORKING status only, so any other one is
+    // silence about them, not a report that nothing is in force.
+    const starting = toProviderEvent(envelopeFor('session.status', { status: 'STARTING' }));
+    const changed = toProviderEvent(envelopeFor('state.change', { status: 'WORKING' }));
+
+    expect(starting).toMatchObject({ accountLimits: null });
+    expect(changed).toMatchObject({ accountLimits: null });
+  });
+
+  it('keeps reading the status when the restriction data is malformed', () => {
+    const result = toProviderEvent(
+      envelopeFor('session.status', {
+        status: 'WORKING',
+        data: { reachoutTimelock: { isActive: 'sometimes' } },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      kind: 'session_status',
+      status: 'WORKING',
+      accountLimits: { reachoutTimelock: null, newChatQuota: null },
     });
   });
 
@@ -199,5 +267,33 @@ describe('toProviderEvent', () => {
     const result = toProviderEvent(envelopeFor('message.reaction', {}));
 
     expect(result).toEqual({ kind: 'unsupported', eventType: 'message.reaction' });
+  });
+});
+
+describe('toStoredPayload', () => {
+  it('keeps only what the platform reads from an acknowledgement', () => {
+    // The WEBJS engine sends the whole message with each receipt, the text that
+    // was sent included.
+    const stored = toStoredPayload('message.ack', {
+      id: 'true_5511999998888@c.us_3EB0',
+      fromMe: true,
+      ack: 2,
+      ackName: 'DEVICE',
+      body: 'Your verification code is 123456',
+      _data: { notifyName: 'Someone' },
+    });
+
+    expect(stored).toStrictEqual({
+      id: 'true_5511999998888@c.us_3EB0',
+      fromMe: true,
+      ack: 2,
+      ackName: 'DEVICE',
+    });
+  });
+
+  it('keeps other events as they came', () => {
+    const payload = { name: 'wnp-1', status: 'WORKING', data: null };
+
+    expect(toStoredPayload('session.status', payload)).toBe(payload);
   });
 });
