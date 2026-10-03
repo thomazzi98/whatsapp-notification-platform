@@ -323,6 +323,28 @@ describe('connecting WhatsApp', () => {
     expect(code.statusCode).toBe(409);
   });
 
+  it('shows a restriction WhatsApp placed on the number, without asking WhatsApp for it', async () => {
+    const connection = await createConnection();
+    await fetch(`${stubBaseUrl}/__stub/sessions/${connection.providerSessionName}/scan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: '5511999990000' }),
+    });
+    await fetch(`${stubBaseUrl}/__stub/sessions/${connection.providerSessionName}/restrict`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ timelockMinutes: 90 }),
+    });
+
+    const read = await dashboardRequest('GET', connectionPath(connection), {
+      tenant: connection.tenant,
+    });
+
+    expect(read.body.sendingPausedReason).toBe('REACHOUT_TIMELOCK');
+    expect(Date.parse(read.body.sendingPausedUntil as string)).toBeGreaterThan(Date.now());
+    expect(read.body.accountLimits).toMatchObject({ reachoutTimelock: { isActive: true } });
+  });
+
   it('records a pairing the provider has lost as stopped, so nothing sends through it', async () => {
     const connection = await createConnection();
     await fetch(`${stubBaseUrl}/__stub/sessions/${connection.providerSessionName}/scan`, {
@@ -505,6 +527,42 @@ describe('receiving a provider callback', () => {
     );
 
     expect(status).toBe(401);
+  });
+
+  it('keeps only what it reads of an acknowledgement, not the message it carries', async () => {
+    // The WEBJS engine sends the whole message with every receipt, the text
+    // that was sent included; the inbox is no place for a second copy of it.
+    const connection = await createConnection();
+    const signingKey = await readStubSigningKey(connection.providerSessionName);
+    const body = JSON.stringify({
+      id: 'event-whole-message',
+      session: connection.providerSessionName,
+      event: 'message.ack',
+      payload: {
+        id: 'true_5511999998888@c.us_3EB0',
+        fromMe: true,
+        ack: 2,
+        ackName: 'DEVICE',
+        body: 'Your verification code is 123456',
+        _data: { notifyName: 'Someone' },
+      },
+    });
+
+    const status = await postCallback(connection.sessionId, body, {
+      'x-webhook-hmac': createHmac('sha512', signingKey).update(body).digest('hex'),
+    });
+    const deliveries = await database.listWebhookDeliveries(connection.tenant.applicationId);
+    const stored = deliveries.find(
+      (delivery) => delivery.providerEventId === 'event-whole-message',
+    );
+
+    expect(status).toBe(202);
+    expect(stored?.payload).toStrictEqual({
+      id: 'true_5511999998888@c.us_3EB0',
+      fromMe: true,
+      ack: 2,
+      ackName: 'DEVICE',
+    });
   });
 
   it('refuses a callback signed with the wrong key', async () => {

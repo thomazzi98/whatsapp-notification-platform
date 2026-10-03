@@ -11,6 +11,8 @@ export const recipients = {
   healthy: '+5511988887777',
   notOnWhatsApp: '+5511999990404',
   serverError: '+5511999990500',
+  /** WhatsApp refuses it for reaching out, as it does to a restricted number. */
+  reachoutRefused: '+5511999990463',
 } as const;
 
 /**

@@ -180,6 +180,8 @@ export interface WebhookDeliveryRow {
   readonly id: string;
   readonly eventType: string;
   readonly providerEventId: string;
+  /** What the inbox kept of the callback, which is not always all of it. */
+  readonly payload: Record<string, unknown>;
   readonly processedAt: Date | null;
   readonly outcome: string | null;
   readonly outcomeDetail: string | null;
@@ -406,7 +408,8 @@ export function connectToTestDatabase(connectionUrl: string): TestDatabaseHandle
         WebhookDeliveryRow & Record<string, unknown>
       >(sql`
         select id, event_type as "eventType", provider_event_id as "providerEventId",
-               processed_at as "processedAt", outcome, outcome_detail as "outcomeDetail"
+               payload, processed_at as "processedAt", outcome,
+               outcome_detail as "outcomeDetail"
         from webhook_deliveries where application_id = ${applicationId}
         order by received_at
       `);

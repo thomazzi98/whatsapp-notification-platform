@@ -80,6 +80,26 @@ test.describe('delivering a notification', () => {
     await expect(page.getByText('1 of 5', { exact: true })).toBeVisible();
   });
 
+  test('stops sending from a number WhatsApp restricts, and says not to pair it again', async ({
+    page,
+  }) => {
+    await signUpAndCreateApplication(page);
+    await connectWhatsApp(page);
+
+    await sendNotification(page, recipients.reachoutRefused, 'WhatsApp will refuse this one.');
+
+    // Never retried: insisting through a restriction is what turns it into a ban.
+    await expect(page.getByText('It will not be attempted again')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('alert')).toContainText('connection_restricted');
+
+    await page.getByRole('link', { name: 'Connections' }).click();
+    await expect(page.getByText(/Restricted by WhatsApp until/)).toBeVisible();
+
+    await page.getByRole('link', { name: /Order updates/ }).click();
+    await expect(page.getByText('WhatsApp is restricting this number')).toBeVisible();
+    await expect(page.getByText(/Do not restart, unpair or pair it again/)).toBeVisible();
+  });
+
   test('shows the notification in the list, filtered by status', async ({ page }) => {
     await signUpAndCreateApplication(page);
     await connectWhatsApp(page);

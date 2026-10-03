@@ -3,8 +3,18 @@ import { Link, useNavigate, useParams } from 'react-router';
 
 import { fieldError, isFieldLevel } from '../api/client';
 import { useConnections, useCreateConnection } from '../api/queries';
+import { isConnectionPaused } from '../components/account-limits';
 import { ConnectionStatusBadge, describeConnectionStatus } from '../components/status';
-import { Alert, Button, EmptyState, Field, Loading, Panel, TextInput } from '../components/ui';
+import {
+  Alert,
+  Button,
+  EmptyState,
+  Field,
+  Loading,
+  Panel,
+  TextInput,
+  Timestamp,
+} from '../components/ui';
 
 export function ConnectionsPage(): ReactNode {
   const { applicationId = '' } = useParams();
@@ -110,6 +120,12 @@ export function ConnectionsPage(): ReactNode {
                   <p className="text-xs text-ink-subtle">
                     {connection.phoneNumber ?? describeConnectionStatus(connection.status)}
                   </p>
+                  {isConnectionPaused(connection) && (
+                    <p className="text-xs text-caution">
+                      Restricted by WhatsApp until{' '}
+                      <Timestamp value={connection.sendingPausedUntil} />
+                    </p>
+                  )}
                 </div>
                 <ConnectionStatusBadge status={connection.status} />
               </Link>

@@ -6,10 +6,10 @@ import { ConnectionStatusBadge, describeConnectionStatus } from './status';
 import { Alert, Button, EmptyState, Loading, Panel } from './ui';
 
 /**
- * The provider issues a limited number of codes before the connection fails
- * outright, so a code fetched by a tab nobody is watching is an attempt spent
- * for nothing. This is the guard that stops a forgotten background tab from
- * burning the budget.
+ * A code fetched by a tab nobody is watching is one nobody will scan before it
+ * expires, and some engines issue only a few before the connection fails
+ * outright. This is the guard that stops a forgotten background tab from
+ * asking for them.
  */
 function useIsAttentive(): boolean {
   const [isAttentive, setIsAttentive] = useState(() => document.visibilityState === 'visible');
@@ -80,9 +80,8 @@ export function QrPanel({
       <div className="flex flex-col items-center gap-4 px-4 py-6">
         {!isAttentive && (
           <Alert tone="caution" title="Paused">
-            Codes expire quickly and the provider only issues a few before the connection fails, so
-            this stops requesting them while the tab is in the background. Return to this tab to
-            continue.
+            Codes expire quickly, so this stops requesting them while the tab is in the background.
+            Return to this tab to continue.
           </Alert>
         )}
 

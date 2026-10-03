@@ -17,6 +17,19 @@ import { DashboardSessionGuard } from '../../http/authentication/dashboard-sessi
 import { ZodValidationPipe } from '../../http/validation/zod-validation.pipe';
 import { UuidParameterPipe } from '../../http/validation/uuid-parameter.pipe';
 
+function toAccountLimitsResponse(
+  record: WhatsAppSessionRecord,
+): WhatsAppSessionResponse['accountLimits'] {
+  if (record.accountLimits === null && record.accountLimitsCheckedAt === null) {
+    return null;
+  }
+  return {
+    reachoutTimelock: record.accountLimits?.reachoutTimelock ?? null,
+    newChatQuota: record.accountLimits?.newChatQuota ?? null,
+    checkedAt: record.accountLimitsCheckedAt?.toISOString() ?? null,
+  };
+}
+
 function toResponse(record: WhatsAppSessionRecord): WhatsAppSessionResponse {
   return {
     id: record.id,
@@ -25,6 +38,9 @@ function toResponse(record: WhatsAppSessionRecord): WhatsAppSessionResponse {
     phoneNumber: record.phoneNumber,
     pushName: record.pushName,
     lastError: record.lastError,
+    sendingPausedUntil: record.sendingPausedUntil?.toISOString() ?? null,
+    sendingPausedReason: record.sendingPausedReason,
+    accountLimits: toAccountLimitsResponse(record),
     lastStatusAt: record.lastStatusAt.toISOString(),
     createdAt: record.createdAt.toISOString(),
   };

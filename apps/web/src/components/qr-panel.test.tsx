@@ -17,6 +17,9 @@ const baseConnection: WhatsAppSessionResponse = {
   phoneNumber: null,
   pushName: null,
   lastError: null,
+  sendingPausedUntil: null,
+  sendingPausedReason: null,
+  accountLimits: null,
   lastStatusAt: '2026-09-08T10:00:00.000Z',
   createdAt: '2026-09-08T10:00:00.000Z',
 };
@@ -74,9 +77,9 @@ describe('the connect screen', () => {
   });
 
   it('asks for no code at all while the tab is in the background', async () => {
-    // The provider issues a handful of codes before the connection fails
-    // outright, so a code fetched by a tab nobody is watching is an attempt
-    // spent for nothing.
+    // A code fetched by a tab nobody is watching is one nobody will scan before
+    // it expires, and some engines issue only a few before the connection
+    // fails outright.
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     codeIsAvailable();
 
