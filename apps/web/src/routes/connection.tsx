@@ -7,6 +7,11 @@ import {
   useConnectionAction,
   useDeleteConnection,
 } from '../api/queries';
+import {
+  AccountLimitsPanel,
+  isConnectionPaused,
+  RestrictionAlert,
+} from '../components/account-limits';
 import { CancelWaitingNotifications } from '../components/cancel-waiting';
 import { ConnectionActions, QrPanel } from '../components/qr-panel';
 import { ConnectionStatusBadge, describeConnectionStatus } from '../components/status';
@@ -43,13 +48,19 @@ export function ConnectionPage(): ReactNode {
         <ConnectionStatusBadge status={record.status} />
       </div>
 
+      <RestrictionAlert connection={record} />
+
       <QrPanel applicationId={applicationId} connection={record} />
 
       {record.lastError !== null && (
         <Alert title="The provider reported a problem">{record.lastError}</Alert>
       )}
 
-      {record.status !== 'WORKING' && (
+      {(record.status === 'WORKING' || record.accountLimits !== null) && (
+        <AccountLimitsPanel connection={record} />
+      )}
+
+      {(record.status !== 'WORKING' || isConnectionPaused(record)) && (
         <CancelWaitingNotifications
           description="While this connection cannot send, notifications queued against it wait for it, for a limited time, and then fail rather than go out late. Cancel them now if they should not be sent at all."
           cancellation={cancelWaiting}

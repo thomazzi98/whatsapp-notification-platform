@@ -1,4 +1,4 @@
-import { providerSessionStatuses } from '@platform/domain';
+import { providerSessionStatuses, sendingPauseReasons } from '@platform/domain';
 import { z } from 'zod';
 
 export const whatsAppSessionCreationRequestSchema = z.object({
@@ -6,6 +6,30 @@ export const whatsAppSessionCreationRequestSchema = z.object({
 });
 
 export type WhatsAppSessionCreationRequest = z.infer<typeof whatsAppSessionCreationRequestSchema>;
+
+/**
+ * What WhatsApp last reported about the account. The status of the quota is
+ * WhatsApp's own word and an open set, so it is a string rather than an enum.
+ */
+const accountLimitsResponseSchema = z.object({
+  reachoutTimelock: z
+    .object({
+      isActive: z.boolean(),
+      endsAt: z.iso.datetime().nullable(),
+      enforcementType: z.string().nullable(),
+    })
+    .nullable(),
+  newChatQuota: z
+    .object({
+      status: z.string(),
+      /** Negative when the account has no cap. */
+      total: z.number(),
+      used: z.number(),
+      cycleEndsAt: z.iso.datetime().nullable(),
+    })
+    .nullable(),
+  checkedAt: z.iso.datetime().nullable(),
+});
 
 export const whatsAppSessionResponseSchema = z.object({
   id: z.uuid(),
@@ -19,6 +43,14 @@ export const whatsAppSessionResponseSchema = z.object({
   phoneNumber: z.string().nullable(),
   pushName: z.string().nullable(),
   lastError: z.string().nullable(),
+  /**
+   * Nothing is sent from the connection before this, because WhatsApp is
+   * restricting the number. A time already past is a pause about to be lifted.
+   */
+  sendingPausedUntil: z.iso.datetime().nullable(),
+  sendingPausedReason: z.enum(sendingPauseReasons).nullable(),
+  /** Null until anything has been heard about the account's limits. */
+  accountLimits: accountLimitsResponseSchema.nullable(),
   lastStatusAt: z.iso.datetime(),
   createdAt: z.iso.datetime(),
 });
