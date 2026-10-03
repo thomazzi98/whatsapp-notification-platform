@@ -33,14 +33,25 @@ one runs, because both answer to the hostname `waha`.
    **Linked devices**.
 4. Wait for the status to reach `WORKING`. Nothing before that means connected.
 
-Two things about the QR flow are worth knowing in advance. The first code takes
-about a minute to appear and later ones about twenty seconds. A session gets six
-codes; after the sixth it fails and has to be restarted. The dashboard shows
-which of the six is on screen, and refuses to consume attempts while the tab is
-in the background — otherwise a forgotten tab silently burns the budget.
+The provider runs WhatsApp Web itself, in a headless browser (the WEBJS engine),
+so the first code takes a while to appear: the browser has to start and load
+WhatsApp Web first. Codes then refresh on their own until one is scanned. The
+dashboard stops asking for codes while its tab is in the background, because a
+code nobody is looking at expires unscanned.
 
 Use a number dedicated to this. It is an unofficial integration and the account
-can be banned.
+can be restricted or banned. What lowers the odds, none of which the software
+can do for you:
+
+- A real, long-used SIM number, never a virtual or VoIP one, in the WhatsApp
+  Business app, with a name, a photo and a description.
+- The phone kept on and online. Linked devices are logged out when the phone
+  stays offline for two weeks.
+- The people you notify writing to the number first, once. The dashboard shows
+  the `wa.me` link for it on the connection's page. Someone who started the
+  conversation is not a new contact, and WhatsApp's limits are on new contacts.
+- When WhatsApp restricts the number, leaving it alone: see
+  [WhatsApp restricted the number](#whatsapp-restricted-the-number).
 
 ## Sending a first notification
 
@@ -96,12 +107,16 @@ Check in this order, because each answer changes the next step.
    after that they fail as `connection_unavailable` rather than go out late. To
    stop them sooner, **Cancel everything waiting** on the notifications page or on
    the connection's page.
-2. **Is the worker running?** `docker compose ps worker`. It has no HTTP port, so
+2. **Is WhatsApp restricting the number?** The connection's page says so, and
+   until when. Nothing is sent from a restricted connection until the
+   restriction lifts — see
+   [WhatsApp restricted the number](#whatsapp-restricted-the-number).
+3. **Is the worker running?** `docker compose ps worker`. It has no HTTP port, so
    its health is its logs.
-3. **Are jobs being claimed?** `SELECT name, state, count(*) FROM pgboss.job
+4. **Are jobs being claimed?** `SELECT name, state, count(*) FROM pgboss.job
 GROUP BY 1, 2;`. Jobs in `created` with a worker running means the worker
    cannot reach the queue.
-4. **Is pacing holding them?** Sending is deliberately slow — one message every
+5. **Is pacing holding them?** Sending is deliberately slow — one message every
    thirty to sixty seconds per connection. A backlog draining slowly is the
    system working, not failing.
 
@@ -115,6 +130,12 @@ match what the gateway expects.
 `provider_response_unreadable` means the gateway answered in a shape the adapter
 does not recognise — normally an engine change. It is retryable and counted as an
 unknown outcome.
+
+`connection_restricted` and `new_chat_quota_exceeded` mean WhatsApp refused the
+message because of the number, not because of the message: a reachout timelock,
+or a used-up quota of new chats. Neither is retried. `connection_paused` on a
+notification still waiting is not a failure: it is holding until a restriction
+lifts. See [WhatsApp restricted the number](#whatsapp-restricted-the-number).
 
 ### Delivery receipts are not arriving
 
@@ -147,20 +168,59 @@ database returns.
 
 ### WhatsApp restricted the number
 
-The connection drops straight after a send, and the provider's log says
-`reachout timelock restriction set` followed by `Stream Errored (conflict)`.
-WhatsApp has limited the number's ability to message people, which is what it
-does to accounts that send automated messages to people who never saved the
-number or replied to it. The platform cannot lift it, and reconnecting over and
-over does not help: the restriction is on the account, so the first message after
-each reconnection sets it again.
+WhatsApp limits accounts that start conversations with people who never wrote to
+them, which is what a notification platform does. It has two limits, and neither
+disconnects anything: the session keeps reporting `WORKING` while messages are
+refused.
 
-1. Cancel what is waiting, so nothing is sent the moment the number returns.
-2. Leave the number alone until the restriction lifts, which takes hours to days.
-3. Have the recipients save the number and send it a message: a conversation
-   they started is not a cold reach-out.
-4. Send less, and only what the recipients expect to receive. Pacing spaces
-   messages out; it does not make unwanted ones acceptable.
+- **Reachout timelock** (error 463). For hours to days, every message to a new
+  contact is refused. Refusals repeated through a timelock are what turn it into
+  a ban.
+- **Monthly quota of new chats** (error 475). Once the allowance of messages to
+  people who have not replied is used up, messages to new contacts are refused
+  until the monthly cycle resets.
+
+What the platform does about them, on its own:
+
+1. **It pauses a timelocked connection.** It learns of the timelock from the
+   status the provider repeats when one starts, from the session lookups it
+   makes at most every ten minutes, or from a refused send. Nothing is sent from
+   the connection until the timelock ends — or, when WhatsApp refused a message
+   without saying for how long, for `DELIVERY_RESTRICTION_FALLBACK_PAUSE_HOURS`
+   (six by default). Notifications the pause will release within
+   `DELIVERY_MAXIMUM_CONNECTION_WAIT_MINUTES` wait for it as `connection_paused`,
+   costing no attempt; the rest fail as `connection_restricted`, saying until
+   when.
+2. **It never retries a refused message.** A 463 fails its notification as
+   `connection_restricted`, a 475 as `new_chat_quota_exceeded`. The quota does
+   not pause the connection: people who already talk to the number keep
+   receiving.
+3. **It shows it.** The connection's page says the number is restricted and
+   until when, and shows the quota as WhatsApp reports it, warnings included.
+   The worker logs `provider.sending.paused` at warning level when a pause
+   begins.
+
+What you do:
+
+1. **Nothing to the connection.** Do not restart, unpair or pair it again: that
+   does not lift the restriction, and WAHA documents the same. It lifts on its
+   own, and sending resumes when it does.
+2. Cancel what is waiting if it should not go out late: **Cancel everything
+   waiting** on the connection's page.
+3. Have the recipients save the number and write to it first. A conversation
+   they started is not a reach-out.
+4. Send less, and only what the recipients expect. Pacing spaces messages out;
+   it does not make unwanted ones acceptable.
+
+Before WAHA reported these, the symptom was only in its log: `reachout timelock
+restriction set`, sometimes followed by `Stream Errored (conflict)` as the
+connection dropped.
+
+```sql
+-- Connections paused now, and what WhatsApp last reported about them.
+SELECT id, display_name, sending_paused_until, account_limits, account_limits_checked_at
+FROM whatsapp_sessions WHERE sending_paused_until > now();
+```
 
 ### A connection cannot be deleted
 
@@ -303,6 +363,26 @@ the newer schema.
 
 ## Changing the WAHA engine
 
-Don't, unless you are prepared to re-scan. `WAHA_NAMESPACE` defaults to the engine
-name, so the pairing is stored per engine and switching loses it. The stub and the
-acknowledgement mapping are modelled on NOWEB.
+The platform runs WEBJS: WhatsApp Web itself, in a headless browser. It is
+heavier than the websocket engines (budget roughly half a gigabyte of memory per
+connection, and the `shm_size` the compose files set) and it is the engine WAHA
+documents as the one that avoids blocking. Until October 2026 it ran NOWEB, on
+which the number was restricted at a handful of messages a day. The stub answers
+as WEBJS does, and can still answer as NOWEB, so the adapter keeps reading both.
+
+Changing the engine means pairing again. `WAHA_NAMESPACE` defaults to the engine
+name, so the pairing is stored per engine and a new engine finds none. The
+platform copes with the provider forgetting a connection — sends wait for it as
+for any lost connection, up to `DELIVERY_MAXIMUM_CONNECTION_WAIT_MINUTES` — but
+the order matters:
+
+1. Make sure no restriction is in force on the number. Pairing again does not
+   lift one, and a new link made during one is the riskiest moment there is.
+2. **Cancel everything waiting**, or deploy when nothing is.
+3. Deploy. The new image is pulled and the provider container recreated; the
+   database, `.env` and every API key are untouched.
+4. Open the connection in the dashboard. It reads as stopped, because the new
+   engine has no session for it. Press **Start**, which creates it again under the
+   same name and signing key, and scan the code.
+5. On the phone, under **Linked devices**, remove the device the old engine was
+   paired as.

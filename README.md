@@ -65,14 +65,19 @@ paced, so the messages arrive in sequence rather than at once.
   named rather than papered over.
 - **Paces itself.** Sends are spaced thirty to sixty seconds apart per
   connection, randomised, because a metronome is what automated-messaging
-  detection looks for.
+  detection looks for. Each one is preceded by "typing…" for about as long as a
+  person would take to write it.
+- **Respects WhatsApp's restrictions.** When WhatsApp puts a number in a
+  reachout timelock, the platform stops sending from it until the timelock
+  lifts, never retries a message WhatsApp refused, and says on the dashboard
+  not to re-pair the number — the reaction that renews a restriction.
 
 ## Documentation
 
 | Document                               | What is in it                                                       |
 | -------------------------------------- | ------------------------------------------------------------------- |
 | [Architecture](docs/architecture.md)   | What the parts are, how a notification travels, where the seams are |
-| [Decision records](docs/adr/README.md) | Eighteen decisions, each with its alternatives and its cost         |
+| [Decision records](docs/adr/README.md) | Nineteen decisions, each with its alternatives and its cost         |
 | [Runbook](docs/runbook.md)             | Operating it: deploying, connecting a number, diagnosing, backups   |
 | [Security](docs/security.md)           | Threat model, controls, and what a review found and fixed           |
 | [Performance](docs/performance.md)     | Where the time goes, what the indexes are for, measured numbers     |
@@ -265,15 +270,22 @@ is a bug waiting to be fixed.
    attempt budget is spent before the network call, and a unique index catches
    the rest — but the guarantee is at-least-once and is described that way
    everywhere.
-2. **This is an unofficial WhatsApp integration.** The number can be banned at
-   any time and no software choice prevents it. Pacing mitigates. Use a
-   dedicated number, never a personal one.
+2. **This is an unofficial WhatsApp integration.** The number can be restricted
+   or banned at any time and no software choice prevents it. WhatsApp restricts
+   accounts that start conversations with people who never wrote to them, which
+   is what notifications are; the platform stops sending through a restriction
+   rather than insisting, which is what turns one into a ban, and paces and
+   types to look like a person. People who write to the number first are not
+   new contacts, so asking them to is the most effective thing there is. Use a
+   dedicated number, never a personal one. The official WhatsApp Business
+   Platform has no such risk, and charges per message.
 3. **A missing read receipt is not a failure.** Recipients can turn read receipts
    off, and the dashboard says so rather than showing an error.
 4. **Cancellation cannot recall a sent message.** That is why `PROCESSING →
 CANCELLED` is an illegal transition and cancelling one answers 409.
 5. **Changing the WAHA engine forces a QR re-scan.** `WAHA_NAMESPACE` defaults to
-   the engine name, so the pairing is stored per engine.
+   the engine name, so the pairing is stored per engine. The platform runs WEBJS,
+   a headless browser, which needs more memory than the websocket engines do.
 6. **Idempotency keys expire after twenty-four hours**, the same contract as
    Stripe's.
 7. **Row level security covers the notification surface, not everything.**
